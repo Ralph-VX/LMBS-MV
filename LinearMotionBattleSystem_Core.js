@@ -1459,6 +1459,15 @@ Game_Battler.prototype.screenY = function(){
     return Kien.LMBS_Core.battleY - this._battleY;
 };
 
+Kien.LMBS_Core.Game_Battler_refresh = Game_Battler.prototype.refresh;
+Game_Battler.prototype.refresh = function() {
+    Kien.LMBS_Core.Game_Battler_refresh.call(this);
+    if (this.isDead() && $gameParty.inBattle()){
+        this.endMotion();
+        this.clearAiData();
+    }
+};
+
 Game_Battler.prototype.updateGravity = function(){
 	if (!this.isGround() && !this.isFloat() && !this.isVerticalKnockback() && !this.isJumping() && (!this.isMotion() || this.isMotionLetFall())) {
 		var fv = Math.pow(this._fallCount,1)
@@ -2665,7 +2674,7 @@ Game_Actor.prototype.update = function() {
         this._battleStart = false;
         return;
     }
-    if ((this.isAiActing() && !this.isPlayerActor()) || this.isAiForcing()){
+    if (!this.isDead() && ((this.isAiActing() && !this.isPlayerActor()) || this.isAiForcing())){
         this.updateAi();
     } else if (!this.isAiActing()) {
         this.clearAiData();
@@ -3281,7 +3290,9 @@ Game_Enemy.prototype.update = function() {
         this._battleStart = false;
         return;
     }
-    this.updateAiAction();
+    if (!this.isDead()){
+        this.updateAiAction();
+    }
 }
 
 Game_Enemy.prototype.updateAiAction = function() {
