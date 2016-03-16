@@ -55,6 +55,11 @@ Kien.LMBS_Core = {};
  * set in troop as actual coordinate in-game.
  * @default 520
  *
+ * @param Battle End Wait Time
+ * @desc Length in Frames to wait after the battle rewards are displayed.
+ * Player can shorten this time to 1/4 by hold button.
+ * @default 200
+ *
  * @param ===System Settings===
  * @desc 
  * @default 
@@ -616,7 +621,7 @@ Kien.LMBS_Core.battleSkillIcon = parseInt(Kien.LMBS_Core.parameters["Battle Skil
 Kien.LMBS_Core.battleItemIcon = parseInt(Kien.LMBS_Core.parameters["Battle Item Icon"]);
 Kien.LMBS_Core.battleSkillName = (Kien.LMBS_Core.parameters["Battle Skill Command Name"]);
 Kien.LMBS_Core.battleItemName = (Kien.LMBS_Core.parameters["Battle Item Command Name"]);
-
+Kien.LMBS_Core.battleEndWaitTime = parseInt(Kien.LMBS_Core.parameters["Battle End Wait Time"]);
 
 
 
@@ -1174,7 +1179,26 @@ BattleManager.displayStartMessages = function() {
 };
 
 BattleManager.processVictory = function() {
+    $gameParty.removeBattleStates();
+    $gameParty.performVictory();
+    this.playVictoryMe();
+    this.replayBgmAndBgs();
+    this.makeRewards();
+    //this.displayVictoryMessage();
+    //this.displayRewards();
+    //this.gainRewards();
     this.endBattle(0);
+};
+
+BattleManager.processDefeat = function() {
+    //this.displayDefeatMessage();
+    this.playDefeatMe();
+    if (this._canLose) {
+        this.replayBgmAndBgs();
+    } else {
+        AudioManager.stopBgm();
+    }
+    this.endBattle(2);
 };
 
 BattleManager.hasObstacle = function(subject, object){
@@ -1268,6 +1292,8 @@ Game_Screen.prototype.zoomBattleCameraAt = function(targets) {
         left = Math.min(left, Kien.LMBS_Core.battleWidth-(Graphics.boxWidth/magnitude));
         var y = Kien.LMBS_Core.battleY;
         this.setZoom(left,y,magnitude);
+    } else {
+        this.setZoom(0,0,1.0);
     }
 }
 
@@ -1326,6 +1352,8 @@ Game_Battler.prototype.initMembers = function(){
     this.endMotion(); // Initialize Motion variables
     this._debugRects = [];
     this._rotation = 0; // rotation angle in degree.
+    this._battleStart = false; //
+    this._forcePose = null;
 };
 
 
@@ -1521,15 +1549,17 @@ Game_Battler.prototype.updateKnockback = function() {
 }
 
 Game_Battler.prototype.updateMotion = function(){
-    if (this._motionList.length > 0 && (!this.motionWaiting())){
-        var obj = this._motionList.shift();
-        while(obj){
-            obj = this.processMotion(obj) ? undefined : this._motionList.shift();
+    if (this.isMotion()){
+        if (this._motionList.length > 0 && (!this.motionWaiting())){
+            var obj = this._motionList.shift();
+            while(obj){
+                obj = this.processMotion(obj) ? undefined : this._motionList.shift();
+            }
         }
-    }
-    this.updateProcessingMotion();
-    if(!this.isMotion()){
-        this.endMotion();
+        this.updateProcessingMotion();
+        if(!this.isMotion()){
+            this.endMotion();
+        }
     }
 }
 
@@ -1789,6 +1819,10 @@ Game_Battler.prototype.updateCollide = function() {
 }
 
 Game_Battler.prototype.updatePose = function() {
+    if (!!this._forcePose){
+        this._pose = this._forcePose;
+        return;
+    }
     if(this.isDead()){
         this._pose = "Dead";
         return;
@@ -1830,11 +1864,15 @@ Kien.LMBS_Core.Game_Battler_onBattleEnd = Game_Battler.prototype.onBattleEnd;
 Game_Battler.prototype.onBattleEnd = function() {
     Kien.LMBS_Core.Game_Battler_onBattleEnd.call(this);
     this._battleRect = null;
+    this._battleStart = false;
+    this._forcePose = null;
 };
 
 Kien.LMBS_Core.Game_Battler_onBattleStart = Game_Battler.prototype.onBattleStart;
 Game_Battler.prototype.onBattleStart = function() {
     Kien.LMBS_Core.Game_Battler_onBattleStart.call(this);
+    this._battleStart = true;
+    this._forcePose = null;
     this.initBattlePosition();
 };
 
@@ -2494,6 +2532,7 @@ Kien.LMBS_Core.Game_Actor_setup = Game_Actor.prototype.setup;
 Game_Actor.prototype.setup = function(actorId) {
     Kien.LMBS_Core.Game_Actor_setup.call(this, actorId);
     this.loadBaseAiClass();
+    this.loadVictorySkill();
     this.clearAiData();
 }
 
@@ -2514,6 +2553,13 @@ Game_Actor.prototype.loadBaseAiClass = function() {
     this._aiData.classname = "Game_LMBSAiActorBase";
     if (this.actor().note.match(/\<Ai Class\=(.+)\>/)) {
         this._aiData.classname = RegExp.$1;
+    }
+}
+
+Game_Actor.prototype.loadVictorySkill = function() {
+    this._victorySkillId = -1;
+    if (this.actor().note.match(/\<Victory Skill\=(\d+)\>/)){
+        this._victorySkillId = parseInt(RegExp.$1,10);
     }
 }
 
@@ -2538,6 +2584,14 @@ Game_Actor.prototype.pushAi = function(aiClass, obj) {
     ai.setup(obj);
     this._aiTree.push(ai);
 }
+
+Kien.LMBS_Core.Game_Actor_shouldDisplayLevelUp = Game_Actor.prototype.shouldDisplayLevelUp;
+Game_Actor.prototype.shouldDisplayLevelUp = function() {
+    if ($gameParty.inBattle()){
+        return false;
+    }
+    return Kien.LMBS_Core.Game_Actor_shouldDisplayLevelUp.call(this);
+};
 
 Game_Actor.prototype.pushAiWaitIdle = function() {
     this.pushAi(Game_LMBSAiWaitIdle);
@@ -2607,7 +2661,8 @@ Game_Actor.prototype.onBattleStart = function() {
 
 Game_Actor.prototype.update = function() {
     Game_Battler.prototype.update.call(this);
-    if (BattleManager.isBattleEnd()) {
+    if (BattleManager.isBattleEnd() || !this._battleStart) {
+        this._battleStart = false;
         return;
     }
     if ((this.isAiActing() && !this.isPlayerActor()) || this.isAiForcing()){
@@ -2615,6 +2670,13 @@ Game_Actor.prototype.update = function() {
     } else if (!this.isAiActing()) {
         this.clearAiData();
     }
+}
+
+Game_Actor.prototype.updatePose = function() {
+    if (!this._battleStart){
+        return;
+    }
+    Game_Battler.prototype.updatePose.apply(this);
 }
 
 Game_Actor.prototype.isPlayerActor = function() {
@@ -2700,7 +2762,7 @@ Game_Actor.prototype.chooseTarget = function() {
 
 Game_Actor.prototype.chooseNearestTarget = function() {
     var thisx = this._battleX;
-    var enemies = $gameTroop.members();
+    var enemies = $gameTroop.aliveMembers();
     var dist = 0;
     for (var index = 0; index < enemies.length; index++) {
         var n = enemies[index];
@@ -2716,7 +2778,7 @@ Game_Actor.prototype.chooseNearestTarget = function() {
 
 Game_Actor.prototype.chooseFarestTarget = function() {
     var thisx = this._battleX;
-    var enemies = $gameTroop.members();
+    var enemies = $gameTroop.aliveMembers();
     var dist = 0;
     for (var index = 0; index < enemies.length; index++) {
         var n = enemies[index];
@@ -2732,7 +2794,7 @@ Game_Actor.prototype.chooseFarestTarget = function() {
 
 Game_Actor.prototype.chooseHighestHpTarget = function() {
     var thisx = this._battleX;
-    var enemies = $gameTroop.members();
+    var enemies = $gameTroop.aliveMembers();
     var dist = 0;
     for (var index = 0; index < enemies.length; index++) {
         var n = enemies[index];
@@ -2748,7 +2810,7 @@ Game_Actor.prototype.chooseHighestHpTarget = function() {
 
 Game_Actor.prototype.chooseLowestHpTarget = function() {
     var thisx = this._battleX;
-    var enemies = $gameTroop.members();
+    var enemies = $gameTroop.aliveMembers();
     var dist = 0;
     for (var index = 0; index < enemies.length; index++) {
         var n = enemies[index];
@@ -2802,8 +2864,17 @@ Game_Actor.prototype.useSkill = function(skillId){
 }
 
 Game_Actor.prototype.endMotion = function() {
+    var opose,opi;
+    if (BattleManager.isBattleEnd() || !this._battleStart) {
+        opose = this._pose;
+        opi = this._patternIndex;
+    }
     Game_Battler.prototype.endMotion.call(this);
     this.initAttackSkills();
+     if (BattleManager.isBattleEnd() || !this._battleStart) {
+        this._pose = opose;
+        this._patternIndex = opi;
+     }
 }
 
 Game_Actor.prototype.useNormalAttack = function(dir) {
@@ -2817,6 +2888,17 @@ Game_Actor.prototype.useRegistedSkill = function(dir) {
     var id = this._skillSets[dir.toString()];
     if(id){
         this.useSkill(id);
+    }
+}
+
+Game_Actor.prototype.performVictorySkill = function() {
+    if (this._victorySkillId >= 0){
+        var action = new Game_Action(this);
+        action.setSkill(this._victorySkillId);
+        this.setAction(0,action);
+        this.loadMotionFromObject($dataSkills[this._victorySkillId]);
+    } else {
+        this._forcePose = 'Victory';
     }
 }
 
@@ -3087,7 +3169,7 @@ Game_Enemy.prototype.chooseTarget = function() {
 
 Game_Enemy.prototype.chooseNearestTarget = function() {
     var thisx = this._battleX;
-    var enemies = $gameParty.members();
+    var enemies = $gameParty.aliveMembers();
     var dist = 0;
     for (var index = 0; index < enemies.length; index++) {
         var n = enemies[index];
@@ -3103,7 +3185,7 @@ Game_Enemy.prototype.chooseNearestTarget = function() {
 
 Game_Enemy.prototype.chooseFarestTarget = function() {
     var thisx = this._battleX;
-    var enemies = $gameParty.members();
+    var enemies = $gameParty.aliveMembers();
     var dist = 0;
     for (var index = 0; index < enemies.length; index++) {
         var n = enemies[index];
@@ -3119,7 +3201,7 @@ Game_Enemy.prototype.chooseFarestTarget = function() {
 
 Game_Enemy.prototype.chooseHighestHpTarget = function() {
     var thisx = this._battleX;
-    var enemies = $gameParty.members();
+    var enemies = $gameParty.aliveMembers();
     var dist = 0;
     for (var index = 0; index < enemies.length; index++) {
         var n = enemies[index];
@@ -3135,7 +3217,7 @@ Game_Enemy.prototype.chooseHighestHpTarget = function() {
 
 Game_Enemy.prototype.chooseLowestHpTarget = function() {
     var thisx = this._battleX;
-    var enemies = $gameParty.members();
+    var enemies = $gameParty.aliveMembers();
     var dist = 0;
     for (var index = 0; index < enemies.length; index++) {
         var n = enemies[index];
@@ -3195,7 +3277,8 @@ Game_Enemy.prototype.initBattlePosition = function(){
 
 Game_Enemy.prototype.update = function() {
     Game_Battler.prototype.update.call(this);
-    if (BattleManager.isBattleEnd()) {
+    if (BattleManager.isBattleEnd() || this._battleStart) {
+        this._battleStart = false;
         return;
     }
     this.updateAiAction();
@@ -3377,7 +3460,6 @@ Window_BattleStatusLMBS.prototype.initialize = function() {
     var w = Graphics.boxWidth;
     var y = Graphics.boxHeight - h;
     this.deactivate();
-    console.log(this.active)
     this.width = w;
     this.height = h;
     this.y = y;
@@ -3486,7 +3568,6 @@ Window_BattleCommandLMBS.prototype.makeCommandList = function() {
 //     var align = this.itemTextAlign();
 //     this.resetTextColor();
 //     this.changePaintOpacity(this.isCommandEnabled(index));
-//     console.log(this.commandName(index));
 //     this.drawText(this.commandName(index), rect.x, rect.y, rect.width, align);
 //     this.drawIcon(this._list[index].ext, rect.x,0);
 // };
@@ -4236,6 +4317,183 @@ Sprite_AnimationLMBS.prototype.updateProcessingTiming = function() {
     }
 }
 
+
+//-----------------------------------------------------------------------------
+// Sprite_BattleRewardLMBS
+//
+// Basic Projectile class.
+
+function Sprite_BattleRewardLMBS() {
+    this.initialize.apply(this, arguments);
+}
+
+Sprite_BattleRewardLMBS.prototype = Object.create(Sprite_Base.prototype);
+Sprite_BattleRewardLMBS.prototype.constructor = Sprite_BattleRewardLMBS;
+
+Sprite_BattleRewardLMBS.prototype.initialize = function(parameters){
+    Sprite_Base.prototype.initialize.call(this);
+    this.bitmap = new Bitmap(1,1);
+    this.sprites = [];
+    this._count = 0;
+    this._start = false;
+    this._finish = false;
+    this._itemNum = 0;
+}
+
+Sprite_BattleRewardLMBS.prototype.isFinish = function() {
+    return this._finish;
+}
+
+Sprite_BattleRewardLMBS.prototype.start = function() {
+    this._start = true;
+}
+
+Sprite_BattleRewardLMBS.prototype.update = function() {
+    if (this._start){
+        this.updateMain();
+        if((Input.isLongPressed('ok') || TouchInput.isLongPressed())){
+            this.updateMain();
+            this.updateMain();
+            this.updateMain();
+        }
+    }
+}
+
+Sprite_BattleRewardLMBS.prototype.updateMain = function() {
+    if (this._count == 0) {
+        this.createExpPart();
+    } else if (this._count == 30) {
+        this.createGoldPart();
+    } else if (this._count == 60) {
+        this.createItemPart();
+    } else if (this._count == (60 + this._itemNum*30) + Kien.LMBS_Core.battleEndWaitTime) {
+        this._finish = true;
+        this._start = false;
+    }
+    this.updateAllParts();
+    this._count++;
+}
+
+Sprite_BattleRewardLMBS.prototype.createExpPart = function() {
+    var sprite = new Sprite();
+    var string = TextManager.exp + ":";
+    var width = this.bitmap.measureTextWidth(string);
+    var x = 60;
+    var height = this.bitmap.fontSize+12;
+    sprite.bitmap = new Bitmap(width,height);
+    sprite.x = x;
+    sprite.visible = true;
+    sprite.bitmap.drawText(string,0,0,width,height);
+    this.parent.addChild(sprite);
+    this.sprites.push(sprite);
+    var valueSprite = new Sprite();
+    x = x + width + 16;
+    string = BattleManager._rewards.exp.toString();
+    width = this.bitmap.measureTextWidth(string);
+    valueSprite.bitmap = new Bitmap(width,height);
+    valueSprite.bitmap.drawText(string,0,0,width,height,'right')
+    valueSprite.opacity = 0;
+    valueSprite.x = x + 80;
+    valueSprite.moveTargetX = x;
+    valueSprite.moveCount = 20;
+    valueSprite.visible = true;
+    this.parent.addChild(valueSprite);
+    this.sprites.push(valueSprite);
+}
+
+Sprite_BattleRewardLMBS.prototype.createGoldPart = function() {
+    var sprite = new Sprite();
+    var string = TextManager.currencyUnit + ":";
+    var width = this.bitmap.measureTextWidth(string);
+    var x = 60;
+    var height = this.bitmap.fontSize+12;
+    var y = height;
+    sprite.bitmap = new Bitmap(width,height);
+    sprite.x = x;
+    sprite.y = y;
+    sprite.bitmap.drawText(string,0,0,width,height);
+    this.parent.addChild(sprite);
+    this.sprites.push(sprite);
+    var valueSprite = new Sprite();
+    x = x + width + 16;
+    string = BattleManager._rewards.gold.toString();
+    width = this.bitmap.measureTextWidth(string);
+    valueSprite.bitmap = new Bitmap(width,height);
+    valueSprite.bitmap.drawText(string,0,0,width,height,'right')
+    valueSprite.opacity = 0;
+    valueSprite.x = x + 80;
+    valueSprite.y = y;
+    valueSprite.moveTargetX = x;
+    valueSprite.moveCount = 20;
+    this.parent.addChild(valueSprite);
+    this.sprites.push(valueSprite);
+}
+
+Sprite_BattleRewardLMBS.prototype.createItemPart = function() {
+    var sprite = new Sprite();
+    sprite.bitmap = new Bitmap(1,1);
+    var string = TextManager.item + ":";
+    var width = this.bitmap.measureTextWidth(string);
+    var x = 60;
+    var height = this.bitmap.fontSize+12;
+    var y = height * 2;
+    sprite.bitmap = new Bitmap(width,height);
+    sprite.x = x;
+    sprite.y = y;
+    sprite.bitmap.drawText(string,0,0,width,height);
+    this.parent.addChild(sprite);
+    this.sprites.push(sprite);
+    var basex = x + width + 16;
+    var basey = y;
+    var lastwidth = 0;
+    var items = BattleManager._rewards.items;
+    this._itemNum = items.length;
+    if (items.length > 0){
+        for (var i = 0; i < items.length; i++){
+            var item = items[i];
+            var valueSprite = new Sprite();
+            string = item.name;
+            width = this.bitmap.measureTextWidth(string) + 36;
+            valueSprite.bitmap = new Bitmap(width,height);
+            this.drawIconTo(valueSprite.bitmap,item.iconIndex,0,0);
+            valueSprite.bitmap.drawText(string,0,0,width,height,'right')
+            valueSprite.opacity = 0;
+            valueSprite.x = basex + (i %2 == 1 ? lastwidth : 0) + 80;
+            valueSprite.y = basey + parseInt(i/2) * height;
+            lastwidth = width;
+            valueSprite.moveTargetX = x;
+            valueSprite.moveCount = 20;
+            valueSprite.waitCount = i * 30;
+            this.parent.addChild(valueSprite);
+            this.sprites.push(valueSprite);
+        }
+    }
+}
+Sprite_BattleRewardLMBS.prototype.drawIconTo = function(target,iconIndex,x,y){
+    var bitmap = ImageManager.loadSystem('IconSet');
+    var pw = Window_Base._iconWidth;
+    var ph = Window_Base._iconHeight;
+    var sx = iconIndex % 16 * pw;
+    var sy = Math.floor(iconIndex / 16) * ph;
+    target.blt(bitmap, sx, sy, pw, ph, x, y);
+}
+Sprite_BattleRewardLMBS.prototype.updateAllParts = function() {
+    for (var i = 0 ; i < this.sprites.length ; i++){
+        var sprite = this.sprites[i];
+        sprite.visible = true;
+        if (sprite.waitCount && sprite.waitCount > 0) {
+            sprite.waitCount--;
+        } else if (sprite.moveCount && sprite.moveCount > 0) {
+            if (sprite.moveCount == 0) {
+                AudioManager.playSe({'name': 'Absorb1', 'pitch' : 150, 'volume' : 60});
+            }
+            sprite.x += (sprite.moveTargetX - sprite.x) / sprite.moveCount;
+            sprite.opacity += (255 - sprite.opacity) / sprite.moveCount;
+            sprite.moveCount--;
+        }
+    }
+}
+
 //-----------------------------------------------------------------------------
 // Spriteset_BattleLMBS
 //
@@ -4597,6 +4855,7 @@ Scene_BattleLMBS.prototype.create = function() {
     this._spriteset = new Spriteset_BattleLMBS();
     this.addChild(this._spriteset);
     this._turnCount = 0;
+    this._defeatCount = Kien.LMBS_Core.battleEndWaitTime;
     this._inputData = {
         "lastDir": 0,
         "lastDirPast": 0,
@@ -4605,6 +4864,7 @@ Scene_BattleLMBS.prototype.create = function() {
     this._battleEnd = false;
     this.createWindowLayer();
     this.createAllWindows();
+    this.createRewardSprite();
     if (Kien.LMBS_Core.isTest()){
         this._testBitmap = new Bitmap(SceneManager._boxWidth,SceneManager._boxHeight);
         this._testSprite = new Sprite(this._testBitmap);
@@ -4619,6 +4879,7 @@ Scene_BattleLMBS.prototype.createAllWindows = function() {
     this.createSkillWindow();
     this.createItemWindow();
     this.createEnemyWindow();
+    this.createMessageWindow();
 };
 
 Scene_BattleLMBS.prototype.createHelpWindow = function() {
@@ -4627,6 +4888,16 @@ Scene_BattleLMBS.prototype.createHelpWindow = function() {
     this._helpWindow.deactivate();
     this._helpWindow.hide();
 };
+
+Scene_BattleLMBS.prototype.createMessageWindow = function() {
+    this._messageWindow = new Window_Message();
+    this._messageWindow.deactivate();
+    this._messageWindow._goldWindow.deactivate();
+    this.addWindow(this._messageWindow);
+    this._messageWindow.subWindows().forEach(function(window) {
+        this.addWindow(window);
+    }, this);
+}
 
 Scene_BattleLMBS.prototype.createStatusWindow = function() {
     this._statusWindow = new Window_BattleStatusLMBS();
@@ -4707,6 +4978,11 @@ Scene_BattleLMBS.prototype.createEnemyWindow = function() {
     this.addWindow(this._enemyWindow);
 }
 
+Scene_BattleLMBS.prototype.createRewardSprite = function() {
+    this._rewardSprite = new Sprite_BattleRewardLMBS();
+    this.addChild(this._rewardSprite);
+}
+
 Scene_BattleLMBS.prototype.start = function() {
     Scene_Base.prototype.start.call(this);
     this._spriteset.onStart();
@@ -4730,7 +5006,7 @@ Scene_BattleLMBS.prototype.update = function() {
     } else {
         if(!BattleManager.updateEvent()){
             this.updateInput();
-        } else {
+        } else if (BattleManager.isBattleEnd()) {
             this.startBattleEnd();
         }
         this.updateTurn();
@@ -4738,15 +5014,22 @@ Scene_BattleLMBS.prototype.update = function() {
 }
 
 Scene_BattleLMBS.prototype.updateCamera = function() {
-    $gameScreen._screenMembers = [this.activeActor(), this.activeActor()._target];
-    if (this._enemyWindow.active) {
-        if (!!this._enemyWindow.enemy()){
-            $gameScreen._screenMembers.push(this._enemyWindow.enemy());
+    if (this._battleEnd){
+        $gameScreen._screenMembers = [];
+    } else {
+        $gameScreen._screenMembers = [this.activeActor(), this.activeActor()._target];
+        if (this._enemyWindow.active) {
+            if (!!this._enemyWindow.enemy()){
+                $gameScreen._screenMembers.push(this._enemyWindow.enemy());
+            }
         }
-    }
-    if (this._statusWindow.active) {
-        if (!!this._statusWindow.actor()){
-            $gameScreen._screenMembers.push(this._statusWindow.actor());
+        if (this._statusWindow.active) {
+            if (!!this._statusWindow.actor()){
+                $gameScreen._screenMembers.push(this._statusWindow.actor());
+            }
+        }
+        if ($gameParty.isAllDead()){
+            $gameScreen._screenMembers = $gameParty.members().concat($gameTroop.members());
         }
     }
 }
@@ -4861,13 +5144,28 @@ Scene_BattleLMBS.prototype.isBattlePaused = function() {
 }
 
 Scene_BattleLMBS.prototype.isAnyInputWindowActive = function() {
-    return this._windowLayer && (this._windowLayer.children.filter(function(window) {
+    return (this._windowLayer && (this._windowLayer.children.filter(function(window) {
         return window.active;
-    }).length > 0);
+    }).length > 0)) || (this._messageWindow && this._messageWindow.isOpen());
 };
 
 Scene_BattleLMBS.prototype.startBattleEnd = function() {
     this._battleEnd = true;
+    $gameParty.aliveMembers().forEach(function(actor){
+        actor.endMotion();
+    })
+    $gameTroop.aliveMembers().forEach(function(actor){
+        actor.endMotion();
+    })
+    if(!$gameParty.isAllDead()){
+        // Victory!
+        $gameParty.aliveMembers().forEach(function(actor){
+            //actor._target = actor;
+            actor.performVictorySkill();
+        });
+        this._rewardSprite.start();
+        BattleManager.gainRewards();
+    }
 }
 
 Scene_BattleLMBS.prototype.updateTurn = function() {
@@ -4886,8 +5184,46 @@ Scene_BattleLMBS.prototype.updateTurn = function() {
 }
 
 Scene_BattleLMBS.prototype.updateBattleEnd = function() {
-
+    if (!BattleManager.isBattleEnd()){
+        return;
+    }
+    if ($gameParty.isAllDead()){
+        if (this._defeatCount > 0){
+            this._defeatCount--;
+            return;
+        }
+        BattleManager.updateBattleEnd();
+    } else if (this._rewardSprite.isFinish() && $gameParty.aliveMembers().filter(function(actor){
+        actor.isMotion();
+    }).length == 0 ){
+        BattleManager.updateBattleEnd()
+    }
 }
+
+Scene_BattleLMBS.prototype.stop = function() {
+    Scene_Base.prototype.stop.call(this);
+    if (this.needsSlowFadeOut()) {
+        this.startFadeOut(this.slowFadeSpeed(), false);
+    } else {
+        this.startFadeOut(this.fadeSpeed(), false);
+    }
+    this._statusWindow.close();
+};
+
+
+Scene_BattleLMBS.prototype.terminate = function() {
+    Scene_Base.prototype.terminate.call(this);
+    $gameParty.onBattleEnd();
+    $gameTroop.onBattleEnd();
+    AudioManager.stopMe();
+    $gameScreen.clearBattleCamera();
+};
+
+Scene_BattleLMBS.prototype.needsSlowFadeOut = function() {
+    return (SceneManager.isNextScene(Scene_Title) ||
+            SceneManager.isNextScene(Scene_Gameover));
+};
+
 // Window Handlers
 // Main Menu
 Scene_BattleLMBS.prototype.onMenuWindowCancel = function() {
@@ -4937,7 +5273,6 @@ Scene_BattleLMBS.prototype.onStatusOkSkill = function() {
 
 Scene_BattleLMBS.prototype.onStatusOkItem = function() {
     $gameParty._lastBattleActorIndexLMBS = this._statusWindow.index();
-    console.log($gameParty._lastBattleActorIndexLMBS);
     this._helpWindow.show();
     this._itemListWindow.refresh();
     this._itemListWindow.show();
