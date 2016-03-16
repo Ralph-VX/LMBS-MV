@@ -974,7 +974,6 @@ Kien.LMBS_Core.loadMotionLine = function(line,list) {
         });
     }
     if(line.match(/Rotation (\d+)\,([46])\,(\d+)/)){
-        console.log(RegExp);
         list.push({
             "type" : "rotation",
             "rotation" : parseInt(RegExp.$1,10),
@@ -1381,7 +1380,7 @@ Game_Battler.prototype.isWaitInput = function() {
 };
 
 Game_Battler.prototype.isDamaging = function() {
-    return this._damageInfo != null;
+    return !!this._damageInfo;
 };
 
 Game_Battler.prototype.isMoving = function() {
@@ -1580,16 +1579,28 @@ Game_Battler.prototype.processMotion = function(obj) {
             return true;
         case "applydamage":
             if(this._target){
-                var oldd = this._actions[0]._damagePercentage;
-                var oldk = this._damageInfo.knockback;
-                var oldkd = this._damageInfo.knockdir;
+                var oldd, oldk, oldkd,dmg;
+                if (this.isDamaging()){
+                    dmg = true;
+                    oldd = this._actions[0]._damagePercentage;
+                    oldk = this._damageInfo.knockback;
+                    oldkd = this._damageInfo.knockdir;
+                } else {
+                    this._damageInfo = {};
+                    dmg = false;
+                }
                 this._actions[0]._damagePercentage = obj.damage;
                 this._damageInfo.knockback = obj.knockback;
                 this._damageInfo.knockdir = obj.knockdir;
-                this.forceDamage(target);
-                this._actions[9]._damagePercentage = oldd;
-                this._damageInfo.knockback = oldk;
-                this._damageInfo.knockdir = oldkd;
+                this.forceDamage(this._target);
+                if (dmg){
+                    this._actions[0]._damagePercentage = oldd;
+                    this._damageInfo.knockback = oldk;
+                    this._damageInfo.knockdir = oldkd;
+                } else {
+                    this._actions[0]._damagePercentage = 1.0;
+                    this._damageInfo = null;
+                }
             }
             break;
         case "waitcast":
@@ -1879,11 +1890,11 @@ Game_Battler.prototype.useSkill = function(skillId){
     }
 }
 
-Game_Battler.prototype.useItem = function(itemId){
-    var item = $dataSkills[skillId];
+Game_Battler.prototype.useItemLMBS = function(itemId){
+    var item = $dataItems[itemId];
     if (item && this.canUseLMBS(item)){
         var action = new Game_Action(this);
-        action.setItem(skillId);
+        action.setItem(itemId);
         this.setAction(0,action);
         this.loadMotionFromObject(item);
         this.consumeItem(item);
@@ -2098,12 +2109,10 @@ Game_LMBSAiCertainAction.prototype.update = function() {
             this._battler._moveTarget = this._battler._battleX;
             this._battler._facing = (this._battler._target._battleX > this._battler._battleX);
             if (this._battler._aiData.readySkillIsItem) {
-                this._battler.useItem(this._battler._aiData.readySkill.id);
+                this._battler.useItemLMBS(this._battler._aiData.readySkill.id);
             } else {
                 this._battler.useSkill(this._battler._aiData.readySkill.id);
             }
-            this._battler.startAiIdle(true);
-            this._battler.pushAiWaitIdle();
             this._phase = 1;
             return;
     }
@@ -2339,6 +2348,7 @@ Game_LMBSAiForceActionFinish.prototype.isFinish = function() {
 Game_LMBSAiForceActionFinish.prototype.update = function() {
     Game_LMBSAiBase.prototype.update.call(this);
     this._battler._aiData.forceAi = false;
+    this._battler._aiData.readySkillIsItem = false;
     this._finish = true;
 }
 
@@ -2376,8 +2386,8 @@ Game_LMBSAiActorBase.prototype.isFinish = function() {
 
 Game_LMBSAiActorBase.prototype.update = function() {
     if (this._battler.isMotion()) {
-        this._battler.startAiIdle(true);
-        if (this._battler.actions[0].isPhysical()){
+        this._battler.pushAiWaitIdle();
+        if (this._battler._actions[0].isPhysical()){
             this._battler.pushAi(Game_LMBSAiActorChainSkill);
         }
         return;
@@ -2455,9 +2465,11 @@ Game_LMBSAiForceAction.prototype.update = function() {
             } else if (this._item.hitType == Game_Action.HITTYPE_MAGICAL) {
                 this._battler.pushAi(Game_LMBSAiActorMagicAction);
             } else {
+                this._battler.startAiIdle(true);
+                this._battler.pushAiWaitIdle();
                 this._battler.pushAi(Game_LMBSAiCertainAction);
             }
-            this._phase = 2;
+            this._phase = 1;
             break;
         case 1:
             this._battler._target = this._oldTarget;
@@ -2962,6 +2974,8 @@ Game_LMBSAiEnemyBase.prototype.update = function() {
                 this._battler._aiData.actionType = 'certain';
                 this._battler._aiData.readySkill = skill;
                 this._battler.chooseTarget();
+                this._battler.startAiIdle(true);
+                this._battler.pushAiWaitIdle();
                 this._battler.pushAi(Game_LMBSAiCertainAction);
             }
         } else {
@@ -3279,7 +3293,7 @@ Game_Interpreter.prototype.command301 = function() {
 Kien.LMBS_Core.Window_SkillType_makeCommandList = Window_SkillType.prototype.makeCommandList;
 Window_SkillType.prototype.makeCommandList = function() {
     Kien.LMBS_Core.Window_SkillType_makeCommandList.call(this);
-    if (this._actor){
+    if (this._actor && !$gameParty.inBattle()){
         this.addCommand(Kien.LMBS_Core.skillTypeName, 'config', true);
     }
 };
@@ -4679,6 +4693,7 @@ Scene_BattleLMBS.prototype.createItemWindow = function() {
     this._itemListWindow = new Window_BattleItem(0,wy,Graphics.boxWidth,wh);
     this._itemListWindow.setHandler('ok', this.onItemListOk.bind(this));
     this._itemListWindow.setHandler('cancel', this.onItemListCancel.bind(this));
+    this._itemListWindow.setHelpWindow(this._helpWindow);
     this._itemListWindow.hide();
     this._itemListWindow.deactivate();
     this.addWindow(this._itemListWindow);
@@ -4749,7 +4764,7 @@ Scene_BattleLMBS.prototype.activeActor = function() {
 }
 
 Scene_BattleLMBS.prototype.updateInput = function() {
-    if (BattleManager._actorIndex >= 0 && this.isMovable()) {
+    if ((BattleManager._actorIndex >= 0 && !this.activeActor()._aiData.forceAi) && this.isMovable()) {
         this.updateInputMenu();
         this.updateInputAttack();
         this.updateInputSkill();
@@ -4922,7 +4937,9 @@ Scene_BattleLMBS.prototype.onStatusOkSkill = function() {
 
 Scene_BattleLMBS.prototype.onStatusOkItem = function() {
     $gameParty._lastBattleActorIndexLMBS = this._statusWindow.index();
+    console.log($gameParty._lastBattleActorIndexLMBS);
     this._helpWindow.show();
+    this._itemListWindow.refresh();
     this._itemListWindow.show();
     this._itemListWindow.activate();
 }
@@ -4960,6 +4977,8 @@ Scene_BattleLMBS.prototype.onStatusOkSkillTarget = function() {
         var actor = $gameParty.battleMembers()[index];
         actor.forceActionLMBS(object, this._statusWindow.actor());
     }
+    this._menuWindow.openness = 0;
+    this._statusWindow.deselect();
 }
 
 // Skill Config Window
@@ -5071,7 +5090,9 @@ Scene_BattleLMBS.prototype.onItemListOk = function() {
     if (!!item) {
         this._itemListWindow.hide();
         this._helpWindow.hide();
-        var action = new Game_Action(this._itemListWindow._actor);
+        var index = $gameParty._lastBattleActorIndexLMBS;
+        var actor = $gameParty.battleMembers()[index];
+        var action = new Game_Action(actor);
         action.setItem(item.id);
         if(action.isForUser()){
             this._statusWindow.select(this._itemListWindow._actor.index());
