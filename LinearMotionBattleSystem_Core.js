@@ -60,6 +60,11 @@ Kien.LMBS_Core = {};
  * Player can shorten this time to 1/4 by hold button.
  * @default 200
  *
+ * @param Auto Guard Time After Guard
+ * @desc Length in frames that character will automatically guard after successfully guard
+ * an attack.
+ * @default 15
+ *
  * @param ===System Settings===
  * @desc 
  * @default 
@@ -622,6 +627,7 @@ Kien.LMBS_Core.battleItemIcon = parseInt(Kien.LMBS_Core.parameters["Battle Item 
 Kien.LMBS_Core.battleSkillName = (Kien.LMBS_Core.parameters["Battle Skill Command Name"]);
 Kien.LMBS_Core.battleItemName = (Kien.LMBS_Core.parameters["Battle Item Command Name"]);
 Kien.LMBS_Core.battleEndWaitTime = parseInt(Kien.LMBS_Core.parameters["Battle End Wait Time"]);
+Kien.LMBS_Core.autoGuardDuration = parseInt(Kien.LMBS_Core.parameters["Auto Guard Time After Guard"]);
 
 
 
@@ -1160,6 +1166,15 @@ if (!window.JSON) {
   };
 };
 
+/**
+ * A hash table to convert from a virtual key code to a mapped key name.
+ *
+ * @static
+ * @property keyMapper
+ * @type Object
+ */
+Input.keyMapper[67] = 'LMBSguard';
+
 //-----------------------------------------------------------------------------
 // ImageManager
 //
@@ -1315,6 +1330,31 @@ Game_Action.prototype.makeDamageValue = function(target, critical) {
     return value
 };
 
+Game_Action.prototype.apply = function(target) {
+    var result = target.result();
+    this.subject().clearResult();
+    result.clear();
+    result.used = this.testApply(target);
+    result.missed = (result.used && Math.random() >= this.itemHit(target));
+    result.evaded = (!result.missed && Math.random() < this.itemEva(target));
+    result.physical = this.isPhysical();
+    result.drain = this.isDrain();
+    if (!result.isHit()) {
+        target._guard = true;
+        result.missed = false;
+        result.evaded = false;
+    }
+    if (this.item().damage.type > 0) {
+        result.critical = (Math.random() < this.itemCri(target));
+        var value = this.makeDamageValue(target, result.critical);
+        this.executeDamage(target, value);
+    }
+    this.item().effects.forEach(function(effect) {
+        this.applyItemEffect(target, effect);
+    }, this);
+    this.applyItemUserEffect(target);
+};
+
 //-----------------------------------------------------------------------------
 // Game_Battler
 //
@@ -1345,6 +1385,7 @@ Game_Battler.prototype.initMembers = function(){
     this._motionFall = false;
     this._target = null;
     this._guard = false; // Is guarding. when guarding, damage will reduced and knockback will not take place.
+    this._guardDuration = 0;
     this._moveTarget = 0 // X coordinate of target position. Y will only change when jumping.
     this._movedX = 0; // Use to revert moving.
     this._battleRect = null; // Rectangle provided by sprite. This will used as movement detection.
@@ -1361,6 +1402,7 @@ Game_Battler.prototype.update = function(){
     this._debugRects = [];
 	this.updateGravity();
     this.updateKnockback();
+    this.updateGuard();
     this.updateMotion();
     if(!this.isMotion()){
         this.updatePose();
@@ -1538,6 +1580,13 @@ Game_Battler.prototype.knockback = function(knockback, knockdir){
         this._knockback.x = knockback.x;
         this._knockback.y = knockback.y;
         this._knockdir = knockdir;
+    } else {
+        if (this._guardDuration < Kien.LMBS_Core.autoGuardDuration) {
+            this._guardDuration = Kien.LMBS_Core.autoGuardDuration;
+        }
+        this._knockback.x = 0;
+        this._knockback.y = 0;
+        this._knockdir = 0;
     }
 }
 
@@ -1553,6 +1602,17 @@ Game_Battler.prototype.updateKnockback = function() {
         }
         if (this._knockback.y < 0.05){
             this._knockback.y = 0;
+        }
+    }
+}
+
+Game_Battler.prototype.updateGuard = function() {
+    if (this._guard) {
+        if (this._guardDuration > 0) {
+            this._guardDuration--;
+            if (this._guardDuration == 0) {
+                this._guard = false;
+            }
         }
     }
 }
@@ -1963,7 +2023,7 @@ Game_BattlerBase.prototype.canUseLMBS = function(obj) {
     if(!bool){
         return bool;
     }
-    bool = !this.isKnockback();
+    bool = !this.isKnockback() && !this.isGuard();
     if (!bool) {
         return bool;
     }
@@ -2022,6 +2082,16 @@ Game_LMBSAiBase.prototype.isFinish = function() {
 }
 
 Game_LMBSAiBase.prototype.update = function() {
+    if (this._battler.isKnockback() || this._battler.isGuard()){
+        if (!this.isFinish){
+            this.setFinish();
+            this._battler.pushAi(Game_LMBSAiIdleAction,{'duration':5});
+            this._battler.pushAiWaitIdle();
+        }
+    }
+}
+
+Game_LMBSAiBase.prototype.setFinish = function() {
 
 }
 
@@ -2063,6 +2133,10 @@ Game_LMBSAiMoveTo.prototype.initialize = function() {
 
 Game_LMBSAiMoveTo.prototype.isFinish = function() {
     return this._finish;
+}
+
+Game_LMBSAiMoveTo.prototype.setFinish = function() {
+    this._finish = true;
 }
 
 Game_LMBSAiMoveTo.prototype.setup = function(obj) {
@@ -2149,6 +2223,11 @@ Game_LMBSAiCertainAction.prototype.isFinish = function() {
     return this._phase == 1;
 }
 
+Game_LMBSAiCertainAction.prototype.setFinish = function() {
+    this._phase = 1;
+}
+
+
 Game_LMBSAiCertainAction.prototype.update = function() {
     Game_LMBSAiBase.prototype.update.call(this);
     switch (this._phase){
@@ -2184,6 +2263,10 @@ Game_LMBSAiActorChainSkill.prototype.initialize = function() {
 
 Game_LMBSAiActorChainSkill.prototype.isFinish = function() {
     return this._finish;
+}
+
+Game_LMBSAiActorChainSkill.prototype.setFinish = function() {
+    this._finish = true;
 }
 
 Game_LMBSAiActorChainSkill.prototype.update = function() {
@@ -2270,6 +2353,10 @@ Game_LMBSAiActorPhysicalAction.prototype.isFinish = function() {
     return this._phase == 2;
 }
 
+Game_LMBSAiActorPhysicalAction.prototype.setFinish = function() {
+    this._phase = 2;
+}
+
 Game_LMBSAiActorPhysicalAction.prototype.update = function() {
     Game_LMBSAiBase.prototype.update.call(this);
     switch (this._phase) {
@@ -2315,6 +2402,10 @@ Game_LMBSAiActorMagicAction.prototype.isFinish = function() {
     return this._phase == 2;
 }
 
+Game_LMBSAiActorMagicAction.prototype.setFinish = function() {
+    this._phase = 2;
+}
+
 Game_LMBSAiActorMagicAction.prototype.update = function() {
     Game_LMBSAiBase.prototype.update.call(this);
     switch (this._phase){
@@ -2358,7 +2449,11 @@ Game_LMBSAiIdleAction.prototype.setup = function(obj) {
 }
 
 Game_LMBSAiIdleAction.prototype.isFinish = function() {
-    return this._duration == 0;
+    return this._duration <= 0;
+}
+
+Game_LMBSAiIdleAction.prototype.setFinish = function() {
+    this._duration = 0;
 }
 
 Game_LMBSAiIdleAction.prototype.update = function() {
@@ -2937,6 +3032,10 @@ Game_LMBSAiEnemyPhysicalAction.prototype.isFinish = function() {
     return this._phase == 2;
 }
 
+Game_LMBSAiEnemyPhysicalAction.prototype.setFinish = function() {
+    this._phase = 2;
+}
+
 Game_LMBSAiEnemyPhysicalAction.prototype.update = function() {
     Game_LMBSAiBase.prototype.update.call(this);
     switch (this._phase) {
@@ -2980,6 +3079,10 @@ Game_LMBSAiEnemyMagicalAction.prototype.setup = function(obj) {
 
 Game_LMBSAiEnemyMagicalAction.prototype.isFinish = function() {
     return this._phase == 2;
+}
+
+Game_LMBSAiEnemyMagicalAction.prototype.setFinish = function() {
+    this._phase = 2;
 }
 
 Game_LMBSAiEnemyMagicalAction.prototype.update = function() {
@@ -4344,6 +4447,8 @@ Sprite_BattleRewardLMBS.prototype.constructor = Sprite_BattleRewardLMBS;
 Sprite_BattleRewardLMBS.prototype.initialize = function(parameters){
     Sprite_Base.prototype.initialize.call(this);
     this.bitmap = new Bitmap(1,1);
+    this.x = 100;
+    this.y = (Graphics.boxHeight-200)/2;
     this.sprites = [];
     this._count = 0;
     this._start = false;
@@ -4389,10 +4494,12 @@ Sprite_BattleRewardLMBS.prototype.createExpPart = function() {
     var sprite = new Sprite();
     var string = TextManager.exp + ":";
     var width = this.bitmap.measureTextWidth(string);
-    var x = 60;
+    var x = this.x + 60;
+    var y = this.y;
     var height = this.bitmap.fontSize+12;
     sprite.bitmap = new Bitmap(width,height);
     sprite.x = x;
+    sprite.y = y;
     sprite.visible = true;
     sprite.bitmap.drawText(string,0,0,width,height);
     this.parent.addChild(sprite);
@@ -4405,6 +4512,7 @@ Sprite_BattleRewardLMBS.prototype.createExpPart = function() {
     valueSprite.bitmap.drawText(string,0,0,width,height,'right')
     valueSprite.opacity = 0;
     valueSprite.x = x + 80;
+    valueSprite.y = y;
     valueSprite.moveTargetX = x;
     valueSprite.moveCount = 20;
     valueSprite.visible = true;
@@ -4416,9 +4524,9 @@ Sprite_BattleRewardLMBS.prototype.createGoldPart = function() {
     var sprite = new Sprite();
     var string = TextManager.currencyUnit + ":";
     var width = this.bitmap.measureTextWidth(string);
-    var x = 60;
+    var x = this.x + 60;
     var height = this.bitmap.fontSize+12;
-    var y = height;
+    var y = this.y + height;
     sprite.bitmap = new Bitmap(width,height);
     sprite.x = x;
     sprite.y = y;
@@ -4445,9 +4553,9 @@ Sprite_BattleRewardLMBS.prototype.createItemPart = function() {
     sprite.bitmap = new Bitmap(1,1);
     var string = TextManager.item + ":";
     var width = this.bitmap.measureTextWidth(string);
-    var x = 60;
+    var x = this.x + 60;
     var height = this.bitmap.fontSize+12;
-    var y = height * 2;
+    var y = this.y + height * 2;
     sprite.bitmap = new Bitmap(width,height);
     sprite.x = x;
     sprite.y = y;
@@ -4469,10 +4577,10 @@ Sprite_BattleRewardLMBS.prototype.createItemPart = function() {
             this.drawIconTo(valueSprite.bitmap,item.iconIndex,0,0);
             valueSprite.bitmap.drawText(string,0,0,width,height,'right')
             valueSprite.opacity = 0;
-            valueSprite.x = basex + (i %2 == 1 ? lastwidth : 0) + 80;
+            valueSprite.x = basex + (i.mod(2) == 1 ? lastwidth : 0) + 80;
             valueSprite.y = basey + parseInt(i/2) * height;
             lastwidth = width;
-            valueSprite.moveTargetX = x;
+            valueSprite.moveTargetX = basex + (i.mod(2) == 1 ? lastwidth : 0);
             valueSprite.moveCount = 20;
             valueSprite.waitCount = i * 30;
             this.parent.addChild(valueSprite);
@@ -5060,6 +5168,7 @@ Scene_BattleLMBS.prototype.activeActor = function() {
 Scene_BattleLMBS.prototype.updateInput = function() {
     if ((BattleManager._actorIndex >= 0 && !this.activeActor()._aiData.forceAi) && this.isMovable()) {
         this.updateInputMenu();
+        this.updateInputGuard();
         this.updateInputAttack();
         this.updateInputSkill();
         if(!this.activeActor().isMotion()){
@@ -5081,6 +5190,13 @@ Scene_BattleLMBS.prototype.updateInputMenu = function() {
     if (Input.isTriggered('shift')){
         this._menuWindow.open();
         this._menuWindow.activate();
+    }
+}
+
+Scene_BattleLMBS.prototype.updateInputGuard = function() {
+    if(Input.isTriggered('LMBSguard')){
+        this.activeActor()._guard = true;
+        this.activeActor()._guardDuration = 1;
     }
 }
 
