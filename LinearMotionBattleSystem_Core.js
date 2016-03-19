@@ -1644,7 +1644,9 @@ Game_Battler.prototype.processMotion = function(obj) {
             this._patternIndex++;
             break;
         case "backward":
-            this._patternIndex--;
+            if (this._patternIndex > 0){
+                this._patternIndex--;
+            }
             break;
         case "move":
             this._processingMotionList.push(Object.create(obj));
@@ -2637,6 +2639,7 @@ Game_Actor.prototype.setup = function(actorId) {
     Kien.LMBS_Core.Game_Actor_setup.call(this, actorId);
     this.loadBaseAiClass();
     this.loadVictorySkill();
+    this.loadMoveSpeed();
     this.clearAiData();
 }
 
@@ -2664,6 +2667,12 @@ Game_Actor.prototype.loadVictorySkill = function() {
     this._victorySkillId = -1;
     if (this.actor().note.match(/\<Victory Skill\=(\d+)\>/)){
         this._victorySkillId = parseInt(RegExp.$1,10);
+    }
+}
+
+Game_Actor.prototype.loadMoveSpeed = function() {
+    if (this.actor().note.match(/\<Move Speed\=(\d+)\>/)){
+        this._moveSpeed = parseInt(RegExp.$1,10);
     }
 }
 
@@ -3242,6 +3251,9 @@ Game_Enemy.prototype.setup = function(enemyId, x, y) {
         this._aiData.classname = eval(RegExp.$1);
     } else {
         this._aiData.classname = 'Game_LMBSAiEnemyBase';
+    }
+    if (this.enemy().note.match(/\<Move Speed\=(\d+)\>/)){
+        this._moveSpeed = parseInt(RegExp.$1,10);
     }
     this.clearAiData();
 };
@@ -3852,6 +3864,10 @@ Sprite_BattlerLMBS.prototype.updateFrame = function() {
     if(this.bitmap){
         var fw = this.currentBitmapCache().width
         var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+        if (pi >= this.currentBitmapCache.frames()) {
+            pi = this.currentBitmapCache().frames-1;
+            this._battler._patternIndex = pi;
+        }
         var fx = pi * fw;
         this.setFrame(fx,0,fw,this.currentBitmapCache().height);
     }
