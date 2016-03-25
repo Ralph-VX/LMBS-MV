@@ -2041,7 +2041,8 @@ Game_BattlerBase.prototype.canUseLMBS = function(obj) {
 Game_Battler.prototype.dealDamage = function(target) {
     if(this._damageList.indexOf(target) == -1){
         this._actions[0].apply(target);
-        target.knockback(this._damageInfo.knockback, this._damageInfo.knockdir ? this._damageInfo.knockdir : this._facing ? 6 : 4);
+        var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
+        target.knockback(this._damageInfo.knockback, dir);
         target.startDamagePopup();
         if (this._actions[0].isDamage() || this._actions[0].isDrain()){
             target.endMotion();
@@ -2053,7 +2054,8 @@ Game_Battler.prototype.dealDamage = function(target) {
 
 Game_Battler.prototype.forceDamage = function(target) {
     this._actions[0].apply(target);
-    target.knockback(this._damageInfo.knockback, this._damageInfo.knockdir ? this._damageInfo.knockdir : this._facing ? 6 : 4);
+    var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
+    target.knockback(this._damageInfo.knockback, dir);
     target.startDamagePopup();
     if (this._actions[0].isDamage() || this._actions[0].isDrain()){
         target.endMotion();
@@ -4188,7 +4190,8 @@ Sprite_ProjectileLMBS.prototype.updateDamage = function() {
         memb.forEach(function(enemy){
             if(!enemy._battler.isDead() && enemy.battlerBox().overlap(rect) && !this._hit){
                 this._action.apply(enemy._battler);
-                enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},this._direction+5);
+                var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4)
+                enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},dir);
                 enemy._battler.endMotion();
                 enemy._battler.startDamagePopup();
                 this._hit = true;
@@ -4373,7 +4376,8 @@ Sprite_AnimationLMBS.prototype.updateDamage = function() {
     var func = function(enemy){
         if(!enemy._battler.isDead() && enemy.battlerBox().overlap(rect) && obj.hitted.indexOf(enemy) == -1){
             this._action.apply(enemy._battler);
-            enemy._battler.knockback(obj.knockback,obj.knockdir);
+            var dir = obj.knockdir ? (this._battler._facing ? 4 : 6) : (this._battler._facing ? 6 : 4);
+            enemy._battler.knockback(obj.knockback,dir);
             enemy._battler.endMotion();
             enemy._battler.startDamagePopup();
             BattleManager.refreshStatus();
