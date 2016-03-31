@@ -984,7 +984,7 @@ Kien.LMBS_Core.loadMotionLine = function(line,list) {
             "dur" : parseInt(RegExp.$1,10)
         });
     }
-    if(line.match(/Rotation (\d+)\,([46])\,(\d+)/)){
+    if(line.match(/Rotation (\d+)\,([+-]\d+)\,(\d+)/)){
         list.push({
             "type" : "rotation",
             "rotation" : parseInt(RegExp.$1,10),
@@ -1763,14 +1763,15 @@ Game_Battler.prototype.processProcessingMotion = function(obj) {
             break;
         case "rotation":
             if (this._rotation == obj.rotation) {
-                if (obj.dir == 6) {
+                var dir = obj.dir > 0 ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
+                if (dir == 6) {
                     this._rotation += 360;
                 } else {
                     obj.rotation += 360;
                 }
             }
             var dr = this._rotation - obj.rotation;
-            this._rotation += (obj.dir-5)*-1 * dr/obj.dur;
+            this._rotation += (dir-5)*-1 * dr/obj.dur;
             obj.dur--;
             break;
         case "waitfall":
