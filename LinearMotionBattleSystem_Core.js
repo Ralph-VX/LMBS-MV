@@ -794,7 +794,7 @@ if (!Kien.gifReader){
 //(function() {
 // It seems use strict mode will be better, so I use it.
 //"use strict"
-// But as if we do it, then we can't call new classes with eval(), so I stop it.
+// But as if we do it, then we can't call new classes with eval(), so I stop to use it.
 
 Kien.LMBS_Core.createMotionListFromNote = function(obj) {
     if(!obj.note){
@@ -813,8 +813,8 @@ Kien.LMBS_Core.createMotionListFromNote = function(obj) {
         }
     });
     if(array.length === 0){
-        if(obj.note.match(/\<Skill Motion\=(.+)\>/)) {
-            var fn = RegExp.$1;
+        if (obj.meta["Skill Motion"]){
+            var fn = obj.meta["skill Motion"];
             var fpath = window.location.pathname.slice(1,-10) + "data/motions/" + fn + ".json";
             try {
                 list = JSON.parse(Kien.LMBS_Core.fs.readFileSync(fpath));
@@ -837,7 +837,7 @@ Kien.LMBS_Core.createAnimationTimingFromName = function(filename) {
     try {
         obj = JSON.parse(Kien.LMBS_Core.fs.readFileSync(fpath));
     } catch (e) {
-        throw e;
+        obj = {};
     }
     return obj;
 };
@@ -846,8 +846,8 @@ Kien.LMBS_Core.getSkillPriority = function(obj) {
     if(!obj.note){
         throw new TypeError('obj is not a proper Object');
     }
-    if(obj.note.match(/\<Skill Priority\=([+-]?\d+)\>/)){
-        return parseInt(RegExp.$1,10);
+    if(obj.meta["Skill Priority"]){
+        return parseInt(obj.meta["Skill Priority"],10);
     }
     return 0;
 };
@@ -856,8 +856,8 @@ Kien.LMBS_Core.getSkillRange = function(obj) {
     if(!obj.note){
         throw new TypeError('obj is not a proper Object');
     }
-    if(obj.note.match(/\<Skill Range\=(\d+)\>/)){
-        return parseInt(RegExp.$1);
+    if(obj.meta["Skill Range"]){
+        return parseInt(obj.meta["Skill Range"],10);
     }
     var list = Kien.LMBS_Core.createMotionListFromNote(obj);
     for (var index = 0; index < list.length; index++){
@@ -999,6 +999,13 @@ Kien.LMBS_Core.loadExtraLine = function(line, list) {
 
 }
 
+Kien.LMBS_Core.loadMotionDescriptorClass = function(obj) {
+    if (obj.meta["Motion Descriptor"]) {
+        return eval(obj.meta["Motion Descriptor"]);
+    }
+    return DefaultMotionDescriptor;
+}
+
 //-----------------------------------------------------------------------------
 // Array
 //
@@ -1089,6 +1096,11 @@ if (!Array.prototype.sample) {
     };
 };
 
+if (!Array.prototype.clear) {
+    Array.prototype.clear = function() {
+        this.splice(0,this.length);
+    }
+}
 
 //-----------------------------------------------------------------------------
 // Rectangle
@@ -1303,7 +1315,6 @@ Game_Screen.prototype.zoomBattleCameraAt = function(targets) {
         if (this._instantZoomTarget.length === 0){
             magnitude = Math.max(Math.min(magnitude,Kien.LMBS_Core.maxCameraZoom),Kien.LMBS_Core.minCameraZoom);
         }
-        var lleft = left;
         left = Math.min(left, Kien.LMBS_Core.battleWidth-(Graphics.boxWidth/magnitude));
         var y = Kien.LMBS_Core.battleY;
         this.setZoom(left,y,magnitude);
@@ -1355,6 +1366,227 @@ Game_Action.prototype.apply = function(target) {
     this.applyItemUserEffect(target);
 };
 
+
+//-----------------------------------------------------------------------------
+// AbstractMotionDescriptor
+//
+// Base class for motion descriptor.
+
+function AbstractMotionDescriptor() {
+    this.initialize.apply(this, arguments);
+}
+
+AbstractMotionDescriptor.prototype.initialize = function(battler) {
+    this._battler = battler;
+    this._finish = false;
+    this._waitCount = 0;
+}
+
+AbstractMotionDescriptor.prototype.isWait = function() {
+    if (this._waitCount > 0) {
+        this._waitCount -= 1;
+        return true;
+    }
+    return false;
+}
+
+AbstractMotionDescriptor.prototype.wait = function(duration) {
+    this._waitCount = duration;
+}
+
+AbstractMotionDescriptor.prototype.isFinish = function() {
+    return this._finish;
+}
+
+AbstractMotionDescriptor.prototype.release = function() {
+    this._battler = null;
+}
+
+
+//-----------------------------------------------------------------------------
+// DefaultMotionDescriptor
+//
+// Base class for motion descriptor.
+
+function DefaultMotionDescriptor() {
+    this.initialize.apply(this, arguments);
+}
+
+DefaultMotionDescriptor.prototype = Object.create(AbstractMotionDescriptor.prototype);
+DefaultMotionDescriptor.prototype.constructor = DefaultMotionDescriptor;
+
+DefaultMotionDescriptor.prototype.initialize = function (battler) {
+    AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
+    var item = this._battler._actions[0]._item.object();
+    this._processingMotionList = [];
+    this._motionList = Kien.LMBS_Core.createMotionListFromNote(item);
+    if (DataManager.isSkill(item)) {
+        this._battler.paySkillCost(item);
+    } else {
+        this._battler.consumeItem(item);
+    }
+}
+
+DefaultMotionDescriptor.prototype.update = function(){
+    if (this._motionList.length > 0 && (!this.motionWaiting())){
+        var obj = this._motionList.shift();
+        while(obj){
+            obj = (this.processMotion(obj) ? undefined : this._motionList.shift());
+        }
+    }
+    this.updateProcessingMotion();
+    if(this._motionList.length === 0 && this._processingMotionList.length === 0){
+        this._finish = true;
+    }
+}
+
+// Process motion executing in list
+// returning true to abort process. Currently only occurs at "wait" command.
+DefaultMotionDescriptor.prototype.processMotion = function(obj) {
+    switch(obj.type){
+        case "pose":
+            this._battler._pose = obj.name;
+            this._battler._patternIndex = 0;
+            break;
+        case "forward":
+            this._battler._patternIndex++;
+            break;
+        case "backward":
+            if (this._battler._patternIndex > 0){
+                this._battler._patternIndex--;
+            }
+            break;
+        case "move":
+            this._processingMotionList.push(Object.create(obj));
+            break;
+        case "wait":
+            this._processingMotionList.push(Object.create(obj));
+            return true;
+        case "startinput":
+            this._battler._waitInput = true;
+            break;
+        case "endinput":
+            this._battler._waitInput = false;
+            break;
+        case "startdamage":
+            this._battler.startDamage(Object.create(obj));
+            break;
+        case "enddamage":
+            this._battler.clearDamage();
+            break;
+        case "projectile":
+            this._battler.registProjectile(Object.create(obj));
+            break;
+        case "letfall":
+            this._battler._motionFall = true;
+            break;
+        case "nofall":
+            this._battler._motionFall = false;
+            break;
+        case "waitfall":
+            this._processingMotionList.push(Object.create(obj));
+            return true;
+        case "applydamage":
+            if(this._battler._target){
+                var oldd, oldk, oldkd, dmg;
+                if (this._battler.isDamaging()){
+                    dmg = true;
+                    oldd = this._battler._actions[0]._damagePercentage;
+                    oldk = this._battler._damageInfo.knockback;
+                    oldkd = this._battler._damageInfo.knockdir;
+                } else {
+                    this._battler._damageInfo = {};
+                    dmg = false;
+                }
+                this._battler._actions[0]._damagePercentage = obj.damage;
+                this._battler._damageInfo.knockback = obj.knockback;
+                this._battler._damageInfo.knockdir = obj.knockdir;
+                this._battler.forceDamage(this._battler._target);
+                if (dmg){
+                    this._battler._actions[0]._damagePercentage = oldd;
+                    this._battler._damageInfo.knockback = oldk;
+                    this._battler._damageInfo.knockdir = oldkd;
+                } else {
+                    this._battler._actions[0]._damagePercentage = 1.0;
+                    this._battler._damageInfo = null;
+                }
+            }
+            break;
+        case "waitcast":
+            this._battler._pose = "Cast";
+            this._battler._patternIndex = -1;
+            this._processingMotionList.push(Object.create(obj));
+            return true;
+        case "rotation":
+            this._processingMotionList.push(Object.create(obj));
+            break;
+    }
+    return false;
+}
+
+
+
+DefaultMotionDescriptor.prototype.updateProcessingMotion = function() {
+    this._processingMotionList.forEach(this.processProcessingMotion, this)
+    var callback = function (obj){
+        return obj.dur == 0;
+    }
+    var index = this._processingMotionList.findIndex(callback);
+    while(index != -1){
+        this._processingMotionList.splice(index,1);
+        index = this._processingMotionList.findIndex(callback);
+    }
+}
+
+// Process your motion need various frames at here
+// Remember to include a "dur" property and set it to 0 when the process is finish.
+DefaultMotionDescriptor.prototype.processProcessingMotion = function(obj) {
+    switch(obj.type){
+        case "wait":
+            obj.dur--;
+            break;
+        case "move":
+            var ddx = obj.dx / obj.dur;
+            var ddy = obj.dy / obj.dur;
+            this._battler.forceMoveWith(ddx * (this._battler._facing ? 1 : -1));
+            this._battler._battleY += ddy;
+            obj.dx -= ddx;
+            obj.dy -= ddy;
+            obj.dur--;
+            break;
+        case "rotation":
+            if (this._battler._rotation == obj.rotation) {
+                var dir = obj.dir > 0 ? (this._battler._facing ? 4 : 6) : (this._battler._facing ? 6 : 4);
+                if (dir == 6) {
+                    this._battler._rotation += 360;
+                } else {
+                    obj.rotation += 360;
+                }
+            }
+            var dr = this._battler._rotation - obj.rotation;
+            this._battler._rotation += (dir-5)*-1 * dr/obj.dur;
+            obj.dur--;
+            break;
+        case "waitfall":
+            if(this._battler.isGround() || !this._battler._motionFall){
+                obj.dur = 0;
+            }
+            break;
+        case "waitcast":
+            obj.dur--;
+            if(obj.dur == 0){
+                this._battler._patternIndex = 0;
+            }
+            break;
+    }
+}
+
+DefaultMotionDescriptor.prototype.motionWaiting = function() {
+    return (this._processingMotionList.find(function(obj){
+        return obj.type.match(/wait/) != null;
+    }) !== undefined);
+}
+
 //-----------------------------------------------------------------------------
 // Game_Battler
 //
@@ -1381,25 +1613,26 @@ Game_Battler.prototype.initMembers = function(){
         "sideSpeed": 0, // Speed moving horizontal plain.
         "falling": false // graph after jumping will be falling.
     };
-    this._projectiles = [];
-    this._motionFall = false;
-    this._target = null;
+    this._projectiles = []; // Projectile objects created by this battler.
+    this._motionFall = false; // Allowed falling in skill motion
+    this._target = null; // targeting battler
     this._guard = false; // Is guarding. when guarding, damage will reduced and knockback will not take place.
-    this._guardDuration = 0;
+    this._guardDuration = 0; // length of guard left, used for AI
     this._moveTarget = 0 // X coordinate of target position. Y will only change when jumping.
     this._movedX = 0; // Use to revert moving.
     this._battleRect = null; // Rectangle provided by sprite. This will used as movement detection.
     this._attackRect = null; // Rectangle provided by sprite when this battler is attacking.
+    this._skillMotionDescriptor = null;
     this.endMotion(); // Initialize Motion variables
-    this._debugRects = [];
+    this._debugRects = []; // Additional colored rectangles drawn in screen for debug purpose
     this._rotation = 0; // rotation angle in degree.
-    this._battleStart = false; //
-    this._forcePose = null;
+    this._battleStart = false; // is the battle started or not
+    this._forcePose = null; // pose that is forced
 };
 
 
 Game_Battler.prototype.update = function(){
-    this._debugRects = [];
+    this._debugRects.clear();
 	this.updateGravity();
     this.updateKnockback();
     this.updateGuard();
@@ -1438,7 +1671,7 @@ Game_Battler.prototype.isVerticalKnockback = function(){
 };
 
 Game_Battler.prototype.isMotion = function() {
-    return !(this._motionList.length === 0 && this._processingMotionList.length === 0);
+    return this._skillMotionDescriptor !== null;
 };
 
 Game_Battler.prototype.isMotionLetFall = function() {
@@ -1617,103 +1850,13 @@ Game_Battler.prototype.updateGuard = function() {
     }
 }
 
-Game_Battler.prototype.updateMotion = function(){
-    if (this.isMotion()){
-        if (this._motionList.length > 0 && (!this.motionWaiting())){
-            var obj = this._motionList.shift();
-            while(obj){
-                obj = this.processMotion(obj) ? undefined : this._motionList.shift();
-            }
-        }
-        this.updateProcessingMotion();
-        if(!this.isMotion()){
+Game_Battler.prototype.updateMotion = function() {
+    if (this.isMotion()) {
+        this._skillMotionDescriptor.update();
+        if (this._skillMotionDescriptor.isFinish()) {
             this.endMotion();
         }
     }
-}
-
-// Process motion executing in list
-// returning true to abort process. Currently only occurs at "wait" command.
-Game_Battler.prototype.processMotion = function(obj) {
-    switch(obj.type){
-        case "pose":
-            this._pose = obj.name;
-            this._patternIndex = 0;
-            break;
-        case "forward":
-            this._patternIndex++;
-            break;
-        case "backward":
-            if (this._patternIndex > 0){
-                this._patternIndex--;
-            }
-            break;
-        case "move":
-            this._processingMotionList.push(Object.create(obj));
-            break;
-        case "wait":
-            this._processingMotionList.push(Object.create(obj));
-            return true;
-        case "startinput":
-            this._waitInput = true;
-            break;
-        case "endinput":
-            this._waitInput = false;
-            break;
-        case "startdamage":
-            this.startDamage(Object.create(obj));
-            break;
-        case "enddamage":
-            this.clearDamage();
-            break;
-        case "projectile":
-            this.registProjectile(Object.create(obj));
-            break;
-        case "letfall":
-            this._motionFall = true;
-            break;
-        case "nofall":
-            this._motionFall = false;
-            break;
-        case "waitfall":
-            this._processingMotionList.push(Object.create(obj));
-            return true;
-        case "applydamage":
-            if(this._target){
-                var oldd, oldk, oldkd,dmg;
-                if (this.isDamaging()){
-                    dmg = true;
-                    oldd = this._actions[0]._damagePercentage;
-                    oldk = this._damageInfo.knockback;
-                    oldkd = this._damageInfo.knockdir;
-                } else {
-                    this._damageInfo = {};
-                    dmg = false;
-                }
-                this._actions[0]._damagePercentage = obj.damage;
-                this._damageInfo.knockback = obj.knockback;
-                this._damageInfo.knockdir = obj.knockdir;
-                this.forceDamage(this._target);
-                if (dmg){
-                    this._actions[0]._damagePercentage = oldd;
-                    this._damageInfo.knockback = oldk;
-                    this._damageInfo.knockdir = oldkd;
-                } else {
-                    this._actions[0]._damagePercentage = 1.0;
-                    this._damageInfo = null;
-                }
-            }
-            break;
-        case "waitcast":
-            this._pose = "Cast";
-            this._patternIndex = -1;
-            this._processingMotionList.push(Object.create(obj));
-            return true;
-        case "rotation":
-            this._processingMotionList.push(Object.create(obj));
-            break;
-    }
-    return false;
 }
 
 Game_Battler.prototype.startDamage = function(obj) {
@@ -1733,67 +1876,14 @@ Game_Battler.prototype.shiftProjectile = function() {
     return this._projectiles.shift();
 }
 
-Game_Battler.prototype.updateProcessingMotion = function() {
-    this._processingMotionList.forEach(this.processProcessingMotion, this)
-    var callback = function (obj){
-        return obj.dur == 0;
-    }
-    var index = this._processingMotionList.findIndex(callback);
-    while(index != -1){
-        this._processingMotionList.splice(index,1);
-        index = this._processingMotionList.findIndex(callback);
-    }
-}
-
-// Process your motion need various frames at here
-// Remember to include a "dur" property and set it to 0 when the process is finish.
-Game_Battler.prototype.processProcessingMotion = function(obj) {
-    switch(obj.type){
-        case "wait":
-            obj.dur--;
-            break;
-        case "move":
-            var ddx = obj.dx / obj.dur;
-            var ddy = obj.dy / obj.dur;
-            this.forceMoveWith(ddx * (this._facing ? 1 : -1));
-            this._battleY += ddy;
-            obj.dx -= ddx;
-            obj.dy -= ddy;
-            obj.dur--;
-            break;
-        case "rotation":
-            if (this._rotation == obj.rotation) {
-                var dir = obj.dir > 0 ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
-                if (dir == 6) {
-                    this._rotation += 360;
-                } else {
-                    obj.rotation += 360;
-                }
-            }
-            var dr = this._rotation - obj.rotation;
-            this._rotation += (dir-5)*-1 * dr/obj.dur;
-            obj.dur--;
-            break;
-        case "waitfall":
-            if(this.isGround() || !this._motionFall){
-                obj.dur = 0;
-            }
-            break;
-        case "waitcast":
-            obj.dur--;
-            if(obj.dur == 0){
-                this._patternIndex = 0;
-            }
-            break;
-    }
-}
-
 Game_Battler.prototype.updateMoving = function() {
     if(this.isMoving()){
         var mdir = (this._battleX - this._moveTarget) > 0 ? -1 : 1;
         var dx = Math.min(Math.abs(this._battleX - this._moveTarget),this.moveSpeed()) * mdir;
         this._movedX = dx;
+        console.log("movedX:" + this._movedX + ",battleX:" + this._battleX + ",1");
         this.checkCollide();
+        console.log("movedX:" + this._movedX + ",battleX:" + this._battleX + ",2");
         this._battleX += this._movedX;
         if (this._movedX != dx) {
             this._moveTarget = this._battleX;
@@ -1819,7 +1909,7 @@ Game_Battler.prototype.checkCollide = function() {
             if (members.findIndex(function(obj) {
                 return obj.isOpaque() && newrect.overlap(obj._battleRect);
             }) != -1 ){
-                this._movedX += this._movedX > 0 ? -1 : 1
+                this._movedX += this._movedX > 0 ? -1 : 1;
                 newrect = this._battleRect.clone();
                 newrect.x += this._movedX;
                 continue;
@@ -1830,7 +1920,7 @@ Game_Battler.prototype.checkCollide = function() {
             if (members.findIndex(function(obj) {
                 return obj.isOpaque() && newrect.overlap(obj._battleRect);
             }) != -1 ){
-                this._movedX += this._movedX > 0 ? -1 : 1
+                this._movedX += this._movedX > 0 ? -1 : 1;
                 newrect = this._battleRect.clone();
                 newrect.x += this._movedX;
                 continue;
@@ -1953,8 +2043,10 @@ Game_Battler.prototype.initBattlePosition = function() {
 }
 
 Game_Battler.prototype.endMotion = function() {
-    this._motionList = [];
-    this._processingMotionList = [];
+    if (this._skillMotionDescriptor !== null) {
+        this._skillMotionDescriptor.release();
+    }
+    this._skillMotionDescriptor = null; // Skill motion descriptor for current motion.
     this._patternIndex = -1;
     this._pose = "Stand";
     this._waitInput = false; // accepting input.
@@ -1977,15 +2069,12 @@ Game_Battler.prototype.clearDamage = function() {
     this._damageInfo = null;
 }
 
-Game_Battler.prototype.motionWaiting = function() {
-    return (this._processingMotionList.find(function(obj){
-        return obj.type.match(/wait/) != null;
-    }) !== undefined);
-}
-
 Game_Battler.prototype.loadMotionFromObject = function(obj) {
     this.endMotion();
-    this._motionList = Kien.LMBS_Core.createMotionListFromNote(obj);
+    var klass = Kien.LMBS_Core.loadMotionDescriptorClass(obj);
+    if (klass) {
+        this._skillMotionDescriptor = new klass(this);
+    }
 }
 
 Game_Battler.prototype.useSkill = function(skillId){
@@ -1995,7 +2084,6 @@ Game_Battler.prototype.useSkill = function(skillId){
         action.setSkill(skillId);
         this.setAction(0,action);
         this.loadMotionFromObject(skill);
-        this.paySkillCost(skill);
         BattleManager.refreshStatus();
     }
 }
@@ -2007,7 +2095,6 @@ Game_Battler.prototype.useItemLMBS = function(itemId){
         action.setItem(itemId);
         this.setAction(0,action);
         this.loadMotionFromObject(item);
-        this.consumeItem(item);
         BattleManager.refreshStatus();
     }
 }
@@ -2039,7 +2126,7 @@ Game_BattlerBase.prototype.canUseLMBS = function(obj) {
     return bool;
 };
 
-Game_Battler.prototype.dealDamage = function(target) {
+Game_Battler.prototype.dealDamage = function(target) {';/'
     if(this._damageList.indexOf(target) == -1){
         this._actions[0].apply(target);
         var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
@@ -2648,34 +2735,35 @@ Game_Actor.prototype.setup = function(actorId) {
 
 Game_Actor.prototype.loadBaseAiClass = function() {
     this._aiData = {};
-    if (this.actor().note.match(/\<Attack Rate\=(\d+)\,(\d+)\>/)){
-        this._aiData.attackRate = parseInt(RegExp.$1,10);
-        this._aiData.magicRate = parseInt(RegExp.$2,10);
+    if (this.actor().meta["Attack Rate"]){
+        var subs = this.actor().meta["Attack Rate"].split(",");
+        this._aiData.attackRate = parseInt(subs[0],10);
+        this._aiData.magicRate = parseInt(subs[1],10);
     } else {
         this._aiData.attackRate = 50;
         this._aiData.magicRate = 50;
     }
-    if (this.actor().note.match(/\<Target Type\=(.+)\>/)){
-        this.loadTargetType(RegExp.$1);
+    if (this.actor().meta["Target Type"]){
+        this.loadTargetType(this.actor().meta["Target Type"]);
     } else {
         this._aiData.targetType = "nearest";
     }
     this._aiData.classname = "Game_LMBSAiActorBase";
-    if (this.actor().note.match(/\<Ai Class\=(.+)\>/)) {
-        this._aiData.classname = RegExp.$1;
+    if (this.actor().meta["Ai Class"]) {
+        this._aiData.classname = his.actor().meta["Ai Class"];
     }
 }
 
 Game_Actor.prototype.loadVictorySkill = function() {
     this._victorySkillId = -1;
-    if (this.actor().note.match(/\<Victory Skill\=(\d+)\>/)){
-        this._victorySkillId = parseInt(RegExp.$1,10);
+    if (this.actor().meta["Victory Skill"]){
+        this._victorySkillId = parseInt(this.actor().meta["Victory Skill"],10);
     }
 }
 
 Game_Actor.prototype.loadMoveSpeed = function() {
-    if (this.actor().note.match(/\<Move Speed\=(\d+)\>/)){
-        this._moveSpeed = parseInt(RegExp.$1,10);
+    if (this.actor().meta["Move Speed"]){
+        this._moveSpeed = parseInt(this.actor().meta["Move Speed"],10);
     }
 }
 
@@ -2765,8 +2853,8 @@ Kien.LMBS_Core.Game_Actor_initImage = Game_Actor.prototype.initImages;
 Game_Actor.prototype.initImages = function() {
 	Kien.LMBS_Core.Game_Actor_initImage.call(this);
 	var actor = this.actor();
-	if(actor.note.match(/\<Battler Name=(.+)\>/)){
-		this._battlerName = RegExp.$1;
+	if(actor.meta["Battler Name"]){
+		this._battlerName = actor.meta["Battler Name"];
 	}
 };
 
@@ -2955,15 +3043,17 @@ Game_Actor.prototype.loadAttackSkills = function(noteObject) {
     this._attackSets = {};
     this._availableAttacks = [];
     if(noteObject && noteObject.note){
-        noteObject.note.split("\n").forEach(function(line){
-            if (line.match(/\<Attack Skill Set (\d+)=(\d+)\>/)){
-                this._attackSets[RegExp.$1] = parseInt(RegExp.$2,10);
-                var skill = $dataSkills[parseInt(RegExp.$2,10)];
+        var dirs = [0,2,4,6,8];
+        for (var i = 0; i < dirs.length ; i++) {
+            var dir = dirs[i]
+            if (noteObject.meta["Attack Skill Set "+dir]) {
+                this._attackSets[""+dir] = parseInt(noteObject.meta["Attack Skill Set "+dir],10);
+                var skill = $dataSkills[parseInt(noteObject.meta["Attack Skill Set "+dir],10)];
                 if (skill){
                     this._availableAttacks.push(skill);
                 }
             }
-        }, this);
+        }
         if (this._attackSets["0"] && !this._attackSets["2"] && !this._attackSets["4"] && !this._attackSets["6"] && !this._attackSets["8"]){
             this._attackSets["2"] = this._attackSets["4"] = this._attackSets["6"] = this._attackSets["8"] = this._attackSets["0"];
         }
@@ -3245,18 +3335,18 @@ Kien.LMBS_Core.Game_Enemy_setup = Game_Enemy.prototype.setup;
 Game_Enemy.prototype.setup = function(enemyId, x, y) {
     Kien.LMBS_Core.Game_Enemy_setup.apply(this,arguments);
     this._aiData = {};
-    if (this.enemy().note.match(/\<Target Type\=(.+)\>/)){
-        this.loadTargetType(RegExp.$1);
+    if (this.enemy().meta["Target Type"]){
+        this.loadTargetType(this.enemy().meta["Target Type"]);
     } else {
         this._aiData.targetType = "nearest";
     }
-    if (this.enemy().note.match(/\<Ai Class\=(.+)\>/)){
-        this._aiData.classname = eval(RegExp.$1);
+    if (this.enemy().meta["Ai Class"]){
+        this._aiData.classname = this.enemy().meta["Ai Class"];
     } else {
         this._aiData.classname = 'Game_LMBSAiEnemyBase';
     }
-    if (this.enemy().note.match(/\<Move Speed\=(\d+)\>/)){
-        this._moveSpeed = parseInt(RegExp.$1,10);
+    if (this.enemy().meta["Move Speed"]){
+        this._moveSpeed = parseInt(this.enemy().meta["Move Speed"],10);
     }
     this.clearAiData();
 };
@@ -3385,8 +3475,8 @@ Game_Enemy.prototype.actionsToSkills = function(actionList) {
 Kien.LMBS_Core.Game_Enemy_battlerName = Game_Enemy.prototype.battlerName;
 Game_Enemy.prototype.battlerName = function() {
     if(typeof this._battlerName == "undefined"){
-    	if(this.enemy().note.match(/\<Battler Name=(.+)\>/)){
-    		this._battlerName = RegExp.$1;
+    	if(this.enemy().meta["Battler Name"]){
+    		this._battlerName = this.enemy().meta["Battler Name"];
     	} else {
     		this._battlerName = null;
     	}
@@ -3867,7 +3957,7 @@ Sprite_BattlerLMBS.prototype.updateFrame = function() {
     if(this.bitmap){
         var fw = this.currentBitmapCache().width
         var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
-        if (pi >= this.currentBitmapCache.frames()) {
+        if (pi >= this.currentBitmapCache().frames) {
             pi = this.currentBitmapCache().frames-1;
             this._battler._patternIndex = pi;
         }
@@ -3922,8 +4012,10 @@ Sprite_BattlerLMBS.prototype.updateDamagePopup = function() {
 Sprite_BattlerLMBS.prototype.updateProjectile = function() {
     while(this._battler.hasProjectile()){
         var obj = this._battler.shiftProjectile();
-        var sprite = new (eval(obj.classname))(obj.parameters);
-        sprite.setupLMBS(this);
+        if (eval(obj.classname) === undefined) {
+            continue;
+        }
+        var sprite = new (eval(obj.classname))(obj.parameters, this);
         var updateFunc = sprite.update;
         var newUpdateFunc = function() {
             if (!SceneManager._scene.isBattlePaused()){
@@ -4027,8 +4119,6 @@ function Sprite_ActorLMBS() {
     this.initialize.apply(this, arguments);
 }
 
-
-
 Sprite_ActorLMBS.prototype = Object.create(Sprite_BattlerLMBS.prototype);
 Sprite_ActorLMBS.prototype.constructor = Sprite_ActorLMBS;
 
@@ -4097,7 +4187,7 @@ function Sprite_ProjectileLMBS() {
 Sprite_ProjectileLMBS.prototype = Object.create(Sprite_Base.prototype);
 Sprite_ProjectileLMBS.prototype.constructor = Sprite_ProjectileLMBS;
 
-Sprite_ProjectileLMBS.prototype.initialize = function(parameters){
+Sprite_ProjectileLMBS.prototype.initialize = function(parameters, sprite){
     Sprite_Base.prototype.initialize.call(this);
     if(parameters.match(/(.+)\,(\d+)\,(\d+)\,([+-]?\d+)\,([+-]?\d+)\,(\d+(?:\.\d+)?)\,(\d+)\,(\d+)\,(\d+)/)){
         var filename = RegExp.$1;
@@ -4125,9 +4215,6 @@ Sprite_ProjectileLMBS.prototype.initialize = function(parameters){
     this._hit = false;
     this.visible = false;
     this.updateBitmap();
-}
-
-Sprite_ProjectileLMBS.prototype.setupLMBS = function(sprite) {
     this.x = sprite._battler.screenX();
     this.y = sprite._battler.screenY();
     this._userSprite = sprite;
@@ -4191,7 +4278,7 @@ Sprite_ProjectileLMBS.prototype.updateDamage = function() {
         memb.forEach(function(enemy){
             if(!enemy._battler.isDead() && enemy.battlerBox().overlap(rect) && !this._hit){
                 this._action.apply(enemy._battler);
-                var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4)
+                var dir = this._knockbackdir ? ( 5 - this._direction ) : ( 5 + this._direction );
                 enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},dir);
                 enemy._battler.endMotion();
                 enemy._battler.startDamagePopup();
@@ -4236,9 +4323,9 @@ function Sprite_AnimationLMBS() {
 Sprite_AnimationLMBS.prototype = Object.create(Sprite_Animation.prototype);
 Sprite_AnimationLMBS.prototype.constructor = Sprite_AnimationLMBS;
 
-Sprite_AnimationLMBS.prototype.initialize = function(parameters){
+Sprite_AnimationLMBS.prototype.initialize = function(parameters, sprite){
     Sprite_Animation.prototype.initialize.call(this);
-    //                    origin,    dx,          dy,   jsoname  id,   delay,    mirror,        follow
+    //                    origin,    dx,         dy,    jsoname   id,  delay,      mirror,          follow
     if (parameters.match(/(.+?)\,([+-]?\d+)\,([+-]?\d+)\,(.+?)\,(\d+)\,(\d+)\,(true|false|null)\,(true|false)/)){
         var origin = RegExp.$1;
         var dx = parseInt(RegExp.$2,10);
@@ -4260,6 +4347,27 @@ Sprite_AnimationLMBS.prototype.initialize = function(parameters){
     this._follow = follow || false;
     this._targetSprite = null;
     this._finish = false;
+    this._userSprite = sprite;
+    this._battler = sprite._battler;
+    this._targetSprite =  sprite.targetSprite();
+    this._animationPosition = {
+        "x" : this.animationX(),
+        "y" : this.animationY(),
+        "height" : this._targetSprite.height
+    }
+    this._action = new Game_Action(this._battler);
+    this._action.setSkill(this._battler._actions[0].item().id);
+    if (this._mirror === null) {
+        this._mirror = !this._battler._facing;
+    }
+    if(this._targetSprite && this._animation){
+        if (this._mirror){
+           this.scale.x = -1;
+        }
+        this.setup(this._targetSprite , this._animation, this._mirror, this._delay);
+    } else {
+        this._finish = true;
+    }
 }
 
 Sprite_AnimationLMBS.prototype.updateCellSprite = function(sprite, cell) {
@@ -4292,29 +4400,6 @@ Sprite_AnimationLMBS.prototype.initMembers = function() {
     this._processingTiming = [];
 }
 
-Sprite_AnimationLMBS.prototype.setupLMBS = function(sprite) {
-    this._userSprite = sprite;
-    this._battler = sprite._battler;
-    this._targetSprite =  sprite.targetSprite();
-    this._animationPosition = {
-        "x" : this.animationX(),
-        "y" : this.animationY(),
-        "height" : this._targetSprite.height
-    }
-    this._action = new Game_Action(this._battler);
-    this._action.setSkill(this._battler._actions[0].item().id);
-    if (this._mirror === null) {
-        this._mirror = !this._battler._facing;
-    }
-    if(this._targetSprite && this._animation){
-        if (this._mirror){
-           this.scale.x = -1;
-        }
-        this.setup(this._targetSprite , this._animation, this._mirror, this._delay);
-    } else {
-        this._finish = true;
-    }
-}
 
 Sprite_AnimationLMBS.prototype.animationX = function() {
     switch (this._originName) {
