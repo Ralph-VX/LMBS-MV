@@ -1,0 +1,31 @@
+[
+  {
+    "type": "pose",
+    "name": "Attack1"
+  },
+  {
+    "type": "wait",
+    "dur" : 8
+  },
+  {
+    "type": "forward"
+  },
+  {
+    "type": "wait",
+    "dur" : 4
+  },
+  {
+    "type": "forward"
+  },
+  {
+    "type": "wait",
+    "dur": 4
+  },
+  {
+    "type": "forward"
+  },
+  {
+    "type": "wait",
+    "dur": 16
+  }
+]

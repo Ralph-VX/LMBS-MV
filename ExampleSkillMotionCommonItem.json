@@ -1,0 +1,16 @@
+[
+  {
+    "type" : "pose",
+    "name" : "Item"
+  },
+  {
+    "type":"applydamage",
+    "damage":1.0,
+    "knockback":{"x":0,"y":0},
+    "knockdir":0
+  },
+  {
+    "type":"wait",
+    "dur":60
+  }
+]

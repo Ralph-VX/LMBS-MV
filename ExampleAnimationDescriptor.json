@@ -1,0 +1,33 @@
+{
+  "2" : [{
+      "rects" : [{  "x": -30,
+                  "y": -80,
+                  "width": 60,
+                  "height": 80 }],
+      "dur" : 3,
+      "damagePer" : 0.6,
+      "knockback" : {"x" : 0, "y" : 3},
+      "knockdir" : 0
+    }],
+  "5" : [{
+      "rects" : [{  "x": -30,
+                  "y": -80,
+                  "width": 60,
+                  "height": 80 }],
+      "dur" : 3,
+      "damagePer" : 0.6,
+      "knockback" : {"x" : 0, "y" : 3},
+      "knockdir" : 0
+    }],
+  "8" : [{
+      "rects" : [{  "x": -30,
+                  "y": -80,
+                  "width": 60,
+                  "height": 80 }],
+      "dur" : 3,
+      "damagePer" : 1.8,
+      "knockback" : {"x" : 5, "y" : 8},
+      "knockdir" : 0
+    }]
+  
+}
