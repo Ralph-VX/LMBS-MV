@@ -168,6 +168,11 @@ Kien.LMBS_Core = {};
  *   When set to Actor note, it will be first attack skill performed, when add
  * to skill note, it will be skill performed as chain skill. 
  * ===========================================================================
+ * * Skill Settings
+ * ===========================================================================
+ *   <Aerial Cast:[id]> : set if the skill can cast in air. [id] is the skill id
+ * will be casted when the skill is cast in air. 0 for the skill itself.
+ * ===========================================================================
  * * Skill Priority
  * ===========================================================================
  *   Add <Skill Priority=[number]> to set priority of the skill. This affect
@@ -1402,6 +1407,39 @@ AbstractMotionDescriptor.prototype.release = function() {
     this._battler = null;
 }
 
+// Defined as a "Default" condition, override this function if needed.
+AbstractMotionDescriptor.prototype.canUse = function(battler, obj) {
+    var bool = false
+    if(DataManager.isSkill(obj)){
+        bool = battler.meetsSkillConditions(obj);
+    } else if (DataManager.isItem(obj)){
+        bool = battler.meetsItemConditions(obj);
+    }
+    if(!bool){
+        return bool;
+    }
+    bool = (!battler.isMotion() || battler._waitInput);
+    if(!bool){
+        return bool;
+    }
+    bool = !battler.isKnockback() && !battler.isGuard();
+    if (!bool) {
+        return bool;
+    }
+    if(battler._actions[0] && battler.isMotion()){
+        var now = battler._actions[0].item();
+        var pri1 = Kien.LMBS_Core.getSkillPriority(now);
+        var pri2 = Kien.LMBS_Core.getSkillPriority(obj);
+        bool = (pri1 != -1 ) && ((pri1 == 0 && pri2 == 0) || (pri2 > pri1) || (pri2 < 0));
+    }
+    if (!bool){
+        return bool;
+    }
+    if (!battler.isGround()) {
+        bool = obj.meta["Aerial Cast"] ? true : false ;
+    }
+    return bool;
+}
 
 //-----------------------------------------------------------------------------
 // DefaultMotionDescriptor
@@ -1418,6 +1456,13 @@ DefaultMotionDescriptor.prototype.constructor = DefaultMotionDescriptor;
 DefaultMotionDescriptor.prototype.initialize = function (battler) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
     var item = this._battler._actions[0]._item.object();
+    if (!this._battler.isGround()) {
+        var id = parseInt(item.meta["Aerial Cast"],10);
+        if (id > 0) {
+            this._skillToBeCast = id;
+            this._skillToBeCastIsItem = DataManager.isItem(item);
+        }
+    }
     this._processingMotionList = [];
     this._motionList = Kien.LMBS_Core.createMotionListFromNote(item);
     if (DataManager.isSkill(item)) {
@@ -1428,6 +1473,15 @@ DefaultMotionDescriptor.prototype.initialize = function (battler) {
 }
 
 DefaultMotionDescriptor.prototype.update = function(){
+    if (this._skillToBeCast) {
+        this._finish = true;
+        if (this._skillToBeCastIsItem) {
+            this._battler.forceItemLMBS(this._skillToBeCast);
+        } else {
+            this._battler.forceSkill(this._skillToBeCast);
+        }
+        return;
+    }
     if (this._motionList.length > 0 && (!this.motionWaiting())){
         var obj = this._motionList.shift();
         while(obj){
@@ -1614,7 +1668,7 @@ Game_Battler.prototype.initMembers = function(){
         "falling": false // graph after jumping will be falling.
     };
     this._projectiles = []; // Projectile objects created by this battler.
-    this._motionFall = false; // Allowed falling in skill motion
+    this._motionFall = true; // Allowed falling in skill motion
     this._target = null; // targeting battler
     this._guard = false; // Is guarding. when guarding, damage will reduced and knockback will not take place.
     this._guardDuration = 0; // length of guard left, used for AI
@@ -1852,9 +1906,10 @@ Game_Battler.prototype.updateGuard = function() {
 
 Game_Battler.prototype.updateMotion = function() {
     if (this.isMotion()) {
-        this._skillMotionDescriptor.update();
         if (this._skillMotionDescriptor.isFinish()) {
             this.endMotion();
+        } else {
+            this._skillMotionDescriptor.update();
         }
     }
 }
@@ -1881,9 +1936,7 @@ Game_Battler.prototype.updateMoving = function() {
         var mdir = (this._battleX - this._moveTarget) > 0 ? -1 : 1;
         var dx = Math.min(Math.abs(this._battleX - this._moveTarget),this.moveSpeed()) * mdir;
         this._movedX = dx;
-        console.log("movedX:" + this._movedX + ",battleX:" + this._battleX + ",1");
         this.checkCollide();
-        console.log("movedX:" + this._movedX + ",battleX:" + this._battleX + ",2");
         this._battleX += this._movedX;
         if (this._movedX != dx) {
             this._moveTarget = this._battleX;
@@ -2050,7 +2103,7 @@ Game_Battler.prototype.endMotion = function() {
     this._patternIndex = -1;
     this._pose = "Stand";
     this._waitInput = false; // accepting input.
-    this._motionFall = false;
+    this._motionFall = true;
     this._rotation = 0;
     this.clearDamage();
 }
@@ -2088,6 +2141,18 @@ Game_Battler.prototype.useSkill = function(skillId){
     }
 }
 
+// Force the skill to be casted, without checkign the condition.
+Game_Battler.prototype.forceSkill = function(skillId){
+    var skill = $dataSkills[skillId];
+    if (skill){
+        var action = new Game_Action(this);
+        action.setSkill(skillId);
+        this.setAction(0,action);
+        this.loadMotionFromObject(skill);
+        BattleManager.refreshStatus();
+    }
+}
+
 Game_Battler.prototype.useItemLMBS = function(itemId){
     var item = $dataItems[itemId];
     if (item && this.canUseLMBS(item)){
@@ -2099,31 +2164,24 @@ Game_Battler.prototype.useItemLMBS = function(itemId){
     }
 }
 
+Game_Battler.prototype.forceItemLMBS = function(itemId){
+    var item = $dataItems[itemId];
+    if (item){
+        var action = new Game_Action(this);
+        action.setItem(itemId);
+        this.setAction(0,action);
+        this.loadMotionFromObject(item);
+        BattleManager.refreshStatus();
+    }
+}
+
 Game_BattlerBase.prototype.canUseLMBS = function(obj) {
-    var bool = false
-    if(DataManager.isSkill(obj)){
-        bool = this.meetsSkillConditions(obj);
-    } else if (DataManager.isItem(obj)){
-        bool = this.meetsItemConditions(obj);
+    var klass = Kien.LMBS_Core.loadMotionDescriptorClass(obj);
+    if (klass) {
+        return klass.prototype.canUse(this, obj);
+    } else {
+        return AbstractMotionDescriptor.prototype.canUse(this, obj);
     }
-    if(!bool){
-        return bool;
-    }
-    bool = (!this.isMotion() || this._waitInput);
-    if(!bool){
-        return bool;
-    }
-    bool = !this.isKnockback() && !this.isGuard();
-    if (!bool) {
-        return bool;
-    }
-    if(this._actions[0] && this.isMotion()){
-        var now = this._actions[0].item();
-        var pri1 = Kien.LMBS_Core.getSkillPriority(now);
-        var pri2 = Kien.LMBS_Core.getSkillPriority(obj);
-        bool = (pri1 != -1 ) && ((pri1 == 0 && pri2 == 0) || (pri2 > pri1) || (pri2 < 0));
-    }
-    return bool;
 };
 
 Game_Battler.prototype.dealDamage = function(target) {';/'
@@ -5211,6 +5269,7 @@ Scene_BattleLMBS.prototype.createRewardSprite = function() {
 Scene_BattleLMBS.prototype.start = function() {
     Scene_Base.prototype.start.call(this);
     this._spriteset.onStart();
+    BattleManager.playBattleBgm();
     BattleManager.startBattle();
     BattleManager._actorIndex = 0;
     this._statusWindow.open();
