@@ -997,6 +997,12 @@ Kien.LMBS_Core.loadMotionLine = function(line,list) {
             "dur" : parseInt(RegExp.$3,10),
         });
     }
+    if(line.match(/SetHitStop (\d+)/)) {
+        list.push({
+            "type" : "sethitstop",
+            "length" : parseInt(RegExp.$1,10)
+        });
+    }
     Kien.LMBS_Core.loadExtraLine(line,list);
 }
 
@@ -1574,6 +1580,9 @@ DefaultMotionDescriptor.prototype.processMotion = function(obj) {
         case "rotation":
             this._processingMotionList.push(Object.create(obj));
             break;
+        case "sethitstop":
+            this._battler._hitStopLength = obj.length;
+            break;
     }
     return false;
 }
@@ -1682,11 +1691,17 @@ Game_Battler.prototype.initMembers = function(){
     this._rotation = 0; // rotation angle in degree.
     this._battleStart = false; // is the battle started or not
     this._forcePose = null; // pose that is forced
+    this._forceWaitCount = 0; // count for hit-stop.
+    this._hitStopLength = 15; // Length of hit-stop.
+    this._knockbacking = false; // Is knockback or not
 };
 
 
 Game_Battler.prototype.update = function(){
     this._debugRects.clear();
+    if (this._forceWaitCount > 0) {
+        this._forceWaitCount--;
+    }
 	this.updateGravity();
     this.updateKnockback();
     this.updateGuard();
@@ -1717,7 +1732,7 @@ Game_Battler.prototype.isGuard = function() {
 };
 
 Game_Battler.prototype.isKnockback = function(){
-    return !(this._knockback.x === 0 && this._knockback.y === 0);
+    return this._knockbacking;
 };
 
 Game_Battler.prototype.isVerticalKnockback = function(){
@@ -1760,12 +1775,16 @@ Game_Battler.prototype.isJumpProcess = function() {
     return this.isJumping() || this.isFalling();
 };
 
+Game_Battler.prototype.isForceWaiting = function() {
+    return this._forceWaitCount > 0;
+}
+
 Game_Battler.prototype.isIdle = function() {
-    return !this.isJumpProcess() && !this.isMotion() && !this.isMoving() && !this.isFalling() && !this.isKnockback() && !this.isDead();
+    return !this.isJumpProcess() && !this.isMotion() && !this.isMoving() && !this.isFalling() && !this.isKnockback() && !this.isDead() && !this.isForceWaiting();
 };
 
 Game_Battler.prototype.isActable = function() {
-    return !this.isJumpProcess() && !this.isMotion() && !this.isKnockback() && !this.isDead();
+    return !this.isJumpProcess() && !this.isMotion() && !this.isKnockback() && !this.isDead() && !this.isForceWaiting();
 }
 
 Game_Battler.prototype.isAttacking = function() {
@@ -1798,7 +1817,7 @@ Game_Battler.prototype.refresh = function() {
 };
 
 Game_Battler.prototype.updateGravity = function(){
-	if (!this.isGround() && !this.isFloat() && !this.isVerticalKnockback() && !this.isJumping() && (!this.isMotion() || this.isMotionLetFall())) {
+	if (!this.isGround() && !this.isFloat() && !this.isVerticalKnockback() && !this.isJumping() && (!this.isMotion() || this.isMotionLetFall()) && !this.isForceWaiting()) {
 		var fv = Math.pow(this._fallCount,1)
 		fv = Math.min(fv,Kien.LMBS_Core.fallMaxSpeed,(this._battleY-this._floatY));
 		this._battleY -= fv;
@@ -1867,6 +1886,7 @@ Game_Battler.prototype.knockback = function(knockback, knockdir){
         this._knockback.x = knockback.x;
         this._knockback.y = knockback.y;
         this._knockdir = knockdir;
+        this._knockbacking = true;
     } else {
         if (this._guardDuration < Kien.LMBS_Core.autoGuardDuration) {
             this._guardDuration = Kien.LMBS_Core.autoGuardDuration;
@@ -1874,27 +1894,33 @@ Game_Battler.prototype.knockback = function(knockback, knockdir){
         this._knockback.x = 0;
         this._knockback.y = 0;
         this._knockdir = 0;
+        this._knockbacking = false;
     }
 }
 
 Game_Battler.prototype.updateKnockback = function() {
-    if(this.isKnockback()){
-        var dir = this._knockdir-5;
-        this.forceMoveWith(this._knockback.x * dir);
-        this._battleY += this._knockback.y;
-        this._knockback.x = this._knockback.x * 3 / 4;
-        this._knockback.y = this._knockback.y * 3 / 4;
-        if (this._knockback.x < 0.05){
-            this._knockback.x = 0;
+    if(this.isKnockback() && !this.isForceWaiting()){
+        if (this._knockback.x != 0 || this._knockback.y != 0){
+            var dir = this._knockdir-5;
+            this.forceMoveWith(this._knockback.x * dir);
+            this._battleY += this._knockback.y;
+            this._knockback.x = this._knockback.x * 3 / 4;
+            this._knockback.y = this._knockback.y * 3 / 4;
+            if (this._knockback.x < 0.05){
+                this._knockback.x = 0;
+            }
+            if (this._knockback.y < 0.05){
+                this._knockback.y = 0;
+            }
         }
-        if (this._knockback.y < 0.05){
-            this._knockback.y = 0;
+        if (this.isGround()) {
+            this._knockbacking = false;
         }
     }
 }
 
 Game_Battler.prototype.updateGuard = function() {
-    if (this._guard) {
+    if (this._guard && !this.isForceWaiting()) {
         if (this._guardDuration > 0) {
             this._guardDuration--;
             if (this._guardDuration == 0) {
@@ -1905,7 +1931,7 @@ Game_Battler.prototype.updateGuard = function() {
 }
 
 Game_Battler.prototype.updateMotion = function() {
-    if (this.isMotion()) {
+    if (this.isMotion() && !this.isForceWaiting()) {
         if (this._skillMotionDescriptor.isFinish()) {
             this.endMotion();
         } else {
@@ -1932,7 +1958,7 @@ Game_Battler.prototype.shiftProjectile = function() {
 }
 
 Game_Battler.prototype.updateMoving = function() {
-    if(this.isMoving()){
+    if(this.isMoving() && !this.isForceWaiting()){
         var mdir = (this._battleX - this._moveTarget) > 0 ? -1 : 1;
         var dx = Math.min(Math.abs(this._battleX - this._moveTarget),this.moveSpeed()) * mdir;
         this._movedX = dx;
@@ -1989,7 +2015,7 @@ Game_Battler.prototype.moveSpeed = function() {
 }
 
 Game_Battler.prototype.updateJump = function() {
-    if(this.isJumping()){
+    if(this.isJumping() && !this.isForceWaiting()){
         this._battleY += Math.round(Kien.LMBS_Core.jumpPower * Math.pow(4/5,15-this._jumpData.dur));
         this.moveWith(this._jumpData.sideSpeed);
         this._jumpData.dur--;
@@ -2000,6 +2026,9 @@ Game_Battler.prototype.updateJump = function() {
 }
 
 Game_Battler.prototype.updateCollide = function() {
+    if (this.isForceWaiting()) {
+        return;
+    }
     var newrect = this._battleRect;
     if(!Kien.LMBS_Core.moveThroughAlly && !(Kien.LMBS_Core.dashThroughAlly && this.isDashing())){
         members = this.friendsUnit().members();
@@ -2105,6 +2134,7 @@ Game_Battler.prototype.endMotion = function() {
     this._waitInput = false; // accepting input.
     this._motionFall = true;
     this._rotation = 0;
+    this._hitStopLength = 15;
     this.clearDamage();
 }
 
@@ -2184,7 +2214,7 @@ Game_BattlerBase.prototype.canUseLMBS = function(obj) {
     }
 };
 
-Game_Battler.prototype.dealDamage = function(target) {';/'
+Game_Battler.prototype.dealDamage = function(target) {
     if(this._damageList.indexOf(target) == -1){
         this._actions[0].apply(target);
         var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
@@ -2195,6 +2225,8 @@ Game_Battler.prototype.dealDamage = function(target) {';/'
         }
         BattleManager.refreshStatus();
         this._damageList.push(target);
+        this._forceWaitCount = this._hitStopLength;
+        target._forceWaitCount = this._hitStopLength;
     }
 }
 
