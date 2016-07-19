@@ -1003,6 +1003,16 @@ Kien.LMBS_Core.loadMotionLine = function(line,list) {
             "length" : parseInt(RegExp.$1,10)
         });
     }
+    if(line.match(/StopAllAi/)) {
+        list.push({
+            "type" : "stopallai"
+        })
+    }
+    if(line.match(/StartAllAi/)) {
+        list.push({
+            "type" : "startallai"
+        })
+    }
     Kien.LMBS_Core.loadExtraLine(line,list);
 }
 
@@ -1461,6 +1471,7 @@ DefaultMotionDescriptor.prototype.constructor = DefaultMotionDescriptor;
 
 DefaultMotionDescriptor.prototype.initialize = function (battler) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
+    this._stoppedAi = false;
     var item = this._battler._actions[0]._item.object();
     if (!this._battler.isGround()) {
         var id = parseInt(item.meta["Aerial Cast"],10);
@@ -1583,11 +1594,37 @@ DefaultMotionDescriptor.prototype.processMotion = function(obj) {
         case "sethitstop":
             this._battler._hitStopLength = obj.length;
             break;
+        case "stopallai":
+            this._battler.friendsUnit().members().forEach(function(battler) {
+                if (battler != this._battler){
+                    battler._pauseAi = true;
+                    battler._forceWaitCount = -1;
+                }
+            }.bind(this))
+            this._battler.opponentsUnit().members().forEach(function(battler) {
+                battler.endMotion();
+                battler.clearAiData();
+                battler._pauseAi = true;
+            })
+            this._stoppedAi = true;
+            break;
+        case "startallai":
+            this.startAllAi();
+            break;
     }
     return false;
 }
 
-
+DefaultMotionDescriptor.prototype.startAllAi = function() {
+    this._battler.friendsUnit().members().forEach(function(battler) {
+        battler._forceWaitCount = 0;
+        battler._pauseAi = false;
+    });
+    this._battler.opponentsUnit().members().forEach(function(battler) {
+        battler._pauseAi = false;
+    })
+    this._stoppedAi = false;
+}
 
 DefaultMotionDescriptor.prototype.updateProcessingMotion = function() {
     this._processingMotionList.forEach(this.processProcessingMotion, this)
@@ -1642,6 +1679,13 @@ DefaultMotionDescriptor.prototype.processProcessingMotion = function(obj) {
             }
             break;
     }
+}
+
+DefaultMotionDescriptor.prototype.release = function() {
+    if (this._stoppedAi) {
+        this.startAllAi();
+    }
+    AbstractMotionDescriptor.prototype.release.call(this);
 }
 
 DefaultMotionDescriptor.prototype.motionWaiting = function() {
@@ -1776,7 +1820,7 @@ Game_Battler.prototype.isJumpProcess = function() {
 };
 
 Game_Battler.prototype.isForceWaiting = function() {
-    return this._forceWaitCount > 0;
+    return this._forceWaitCount != 0;
 }
 
 Game_Battler.prototype.isIdle = function() {
@@ -2858,6 +2902,7 @@ Game_Actor.prototype.loadMoveSpeed = function() {
 }
 
 Game_Actor.prototype.clearAiData = function() {
+    this._pauseAi = false;
     this._aiTree = [];
     this._aiData.readySkill = null; // Skill that character Ai is trying to use.
     this._aiData.forceAi = false; // Force to move by AI even the player is controlling it
@@ -3000,6 +3045,9 @@ Game_Actor.prototype.attackSkills = function() {
 }
 
 Game_Actor.prototype.updateAi = function() {
+    if (this._pauseAi) {
+        return;
+    }
     var ai = this._aiTree[this._aiTree.length - 1];
     while (true){
         if (ai && ai.isFinish()){
@@ -3385,6 +3433,7 @@ Game_LMBSAiEnemyBase.prototype.update = function() {
 Game_Enemy.prototype.clearAiData = function() {
     this._aiTree = [];
     this._aiData.readySkill = null; // Skill Id that character Ai is trying to use.
+    this._pauseAi = false;
     var ai = eval(this._aiData.classname);
     this.pushAi(ai);
 }
@@ -3594,6 +3643,9 @@ Game_Enemy.prototype.update = function() {
 }
 
 Game_Enemy.prototype.updateAiAction = function() {
+    if (this._pauseAi) {
+        return;
+    }
     var ai = this._aiTree[this._aiTree.length - 1];
     while (true){
         if (ai && ai.isFinish()){
