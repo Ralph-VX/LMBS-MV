@@ -889,12 +889,30 @@ Kien.LMBS_Core.inBetween = function(a, b, value) {
 };
 
 Kien.LMBS_Core.loadMotionList = function(array, list) {
-    array.forEach(function(line) {
-        Kien.LMBS_Core.loadMotionLine(line,list);
-    });
+    var tree = [];
+    var cur = {"list" : list, "newDepth" : false, "finish" : false};
+    for (var index = 0; index < array.length; index++){
+        line = list[index];
+        Kien.LMBS_Core.loadMotionLine(line, cur);
+        if (cur.newDepth) {
+            cur.newDepth = false;
+            tree.push(cur);
+            cur = {"list" : cur.list[cur.list.length - 1].list || [], "newDepth" : false, "finish" : false};
+        } else if (cur.finish) {
+            if (tree.length > 0) {
+                cur = tree.pop;
+            } else {
+                console.log("Skill Motion have extra EndIf statement, ignoring it.");
+            }
+        }
+    }
+    if (tree.length > 0) {
+        console.log("Error! Skill Motion have too little EndIf statement! Something will go wrong.")
+    }
 }
 
-Kien.LMBS_Core.loadMotionLine = function(line,list) {
+Kien.LMBS_Core.loadMotionLine = function(line,cur) {
+    var list = cur.list;
     if(line.match(/ChangePose (.+)/)) {
         list.push({
             "type" : "pose",
@@ -1006,18 +1024,31 @@ Kien.LMBS_Core.loadMotionLine = function(line,list) {
     if(line.match(/StopAllAi/)) {
         list.push({
             "type" : "stopallai"
-        })
+        });
     }
     if(line.match(/StartAllAi/)) {
         list.push({
             "type" : "startallai"
-        })
+        });
     }
-    Kien.LMBS_Core.loadExtraLine(line,list);
+    if (line.match(/^If (.+)/)){
+        list.push({
+            "type" : "if",
+            "expression" : $1;
+        });
+        cur.newDepth = true;
+    }
+    if (line.match(/^EndIf/)){
+        list.push({
+            "type" : "endif"
+        });
+        cur.finish = true;
+    }
+    Kien.LMBS_Core.loadExtraLine(line,cur);
 }
 
-Kien.LMBS_Core.loadExtraLine = function(line, list) {
-
+Kien.LMBS_Core.loadExtraLine = function(line, cur) {
+    
 }
 
 Kien.LMBS_Core.loadMotionDescriptorClass = function(obj) {
