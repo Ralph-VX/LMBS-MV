@@ -889,12 +889,32 @@ Kien.LMBS_Core.inBetween = function(a, b, value) {
 };
 
 Kien.LMBS_Core.loadMotionList = function(array, list) {
-    array.forEach(function(line) {
-        Kien.LMBS_Core.loadMotionLine(line,list);
-    });
+    var tree = [];
+    var cur = {"list" : list, "newDepth" : false, "finish" : false};
+    for (var index = 0; index < array.length; index++){
+        line = array[index];
+        Kien.LMBS_Core.loadMotionLine(line, cur);
+        if (cur.newDepth) {
+            cur.newDepth = false;
+            tree.push(cur);
+            console.log(cur);
+            cur = {"list" : cur.list[cur.list.length - 1].list || [], "newDepth" : false, "finish" : false};
+            console.log(cur);
+        } else if (cur.finish) {
+            if (tree.length > 0) {
+                cur = tree.pop();
+            } else {
+                console.log("Skill Motion have extra EndIf statement, ignoring it.");
+            }
+        }
+    }
+    if (tree.length > 0) {
+        console.log("Error! Skill Motion have too little EndIf statement! Something will go wrong.")
+    }
 }
 
-Kien.LMBS_Core.loadMotionLine = function(line,list) {
+Kien.LMBS_Core.loadMotionLine = function(line,cur) {
+    var list = cur.list;
     if(line.match(/ChangePose (.+)/)) {
         list.push({
             "type" : "pose",
@@ -1006,17 +1026,32 @@ Kien.LMBS_Core.loadMotionLine = function(line,list) {
     if(line.match(/StopAllAi/)) {
         list.push({
             "type" : "stopallai"
-        })
+        });
     }
     if(line.match(/StartAllAi/)) {
         list.push({
             "type" : "startallai"
-        })
+        });
     }
-    Kien.LMBS_Core.loadExtraLine(line,list);
+    if (line.match(/^If (.+)/)){
+        console.log(["if hit",cur]);
+        list.push({
+            "type" : "if",
+            "expression" : RegExp.$1,
+            "list" : []
+        });
+        cur.newDepth = true;
+    }
+    if (line.match(/^EndIf/)){
+        list.push({
+            "type" : "endif"
+        });
+        cur.finish = true;
+    }
+    Kien.LMBS_Core.loadExtraLine(line,cur);
 }
 
-Kien.LMBS_Core.loadExtraLine = function(line, list) {
+Kien.LMBS_Core.loadExtraLine = function(line, cur) {
 
 }
 
@@ -1460,7 +1495,7 @@ AbstractMotionDescriptor.prototype.canUse = function(battler, obj) {
 //-----------------------------------------------------------------------------
 // DefaultMotionDescriptor
 //
-// Base class for motion descriptor.
+// Motion descriptor for default skill motions.
 
 function DefaultMotionDescriptor() {
     this.initialize.apply(this, arguments);
@@ -1472,6 +1507,7 @@ DefaultMotionDescriptor.prototype.constructor = DefaultMotionDescriptor;
 DefaultMotionDescriptor.prototype.initialize = function (battler) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
     this._stoppedAi = false;
+    this._childDescriptor = null;
     var item = this._battler._actions[0]._item.object();
     if (!this._battler.isGround()) {
         var id = parseInt(item.meta["Aerial Cast"],10);
@@ -1498,6 +1534,14 @@ DefaultMotionDescriptor.prototype.update = function(){
             this._battler.forceSkill(this._skillToBeCast);
         }
         return;
+    }
+    if (this._childDescriptor != null) {
+        this._childDescriptor.update();
+        if (this._childDescriptor.isFinish()) {
+            this._childDescriptor = null;
+        } else {
+            return;
+        }
     }
     if (this._motionList.length > 0 && (!this.motionWaiting())){
         var obj = this._motionList.shift();
@@ -1611,6 +1655,17 @@ DefaultMotionDescriptor.prototype.processMotion = function(obj) {
         case "startallai":
             this.startAllAi();
             break;
+        case "if":
+            var a = this._battler;
+            var b = a._target;
+            var v = $gameVariables._data;
+            if (eval(obj.expression)){
+                this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, obj.list);
+            }
+            break;
+        case "endif":
+        // Do nothing in DefaultMotionDescriptor, as this is not in a if statement.
+            break;
     }
     return false;
 }
@@ -1692,6 +1747,35 @@ DefaultMotionDescriptor.prototype.motionWaiting = function() {
     return (this._processingMotionList.find(function(obj){
         return obj.type.match(/wait/) != null;
     }) !== undefined);
+}
+
+//-----------------------------------------------------------------------------
+// ChildDefaultMotionDescriptor
+//
+// Base class for motion descriptor.
+
+function ChildDefaultMotionDescriptor() {
+    this.initialize.apply(this, arguments);
+}
+
+ChildDefaultMotionDescriptor.prototype = Object.create(DefaultMotionDescriptor.prototype);
+ChildDefaultMotionDescriptor.prototype.constructor = ChildDefaultMotionDescriptor;
+
+ChildDefaultMotionDescriptor.prototype.initialize = function (battler, list) {
+    AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
+    this._stoppedAi = false;
+    this._processingMotionList = [];
+    this._motionList = list;
+    this._childDescriptor = null;
+}
+
+ChildDefaultMotionDescriptor.prototype.processMotion = function(obj) {
+    switch(obj.type){
+        case "endif":
+            this._finish = true;
+            break;
+    }
+    return DefaultMotionDescriptor.prototype.processMotion.call(this, obj);
 }
 
 //-----------------------------------------------------------------------------
@@ -1834,6 +1918,10 @@ Game_Battler.prototype.isActable = function() {
 Game_Battler.prototype.isAttacking = function() {
     return this._attackRect;
 };
+
+Game_Battler.prototype.isHit = function() {
+    return this.isMotion() && this.isDamaging() && this._damageList.length > 0;
+}
 
 Game_Battler.prototype.hasProjectile = function() {
     return this._projectiles.length > 0;
