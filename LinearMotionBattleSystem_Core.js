@@ -1656,6 +1656,7 @@ DefaultMotionDescriptor.prototype.processMotion = function(obj) {
             this.startAllAi();
             break;
         case "if":
+        // Something similar to default damage formula :p
             var a = this._battler;
             var b = a._target;
             var v = $gameVariables._data;
@@ -4073,12 +4074,7 @@ Sprite_BattlerLMBS.prototype.onStart = function() {
 }
 
 Sprite_BattlerLMBS.prototype.cacheAllBitmaps = function(baseName,isactor){
-	var basePath = window.location.pathname.slice(1,-10) + "img/sv_";
-	if (isactor){
-		basePath = basePath.concat("actors/");
-	} else {
-        basePath = basePath.concat("enemies/");
-	}
+	var basePath = window.location.pathname.slice(1,-10) + "img/sv_actors/";
 	basePath = basePath.concat(baseName + "/");
 	this._cachedBitmaps = {};
     this._cachedBitmapNames = [];
@@ -4095,10 +4091,14 @@ Sprite_BattlerLMBS.prototype.cacheAllBitmaps = function(baseName,isactor){
 Sprite_BattlerLMBS.prototype.cacheAllBitmapsCallBack = function(files){
 	for (var i = 0; i < files.length;i++){
 		var file = files[i];
-        if (file.search( /.+\.png/) >= 0){ 
-            var arr = file.split(/(.+?)\[(.*)\]/); // ["",name,parameters,""]
-            if (arr.length > 1){
-                var cache = {};
+        if (file.search( /(.+)\.png/) >= 0){ 
+            var filename = RegExp.$1;
+            var arr = filename.match(/(.+?)(?:\[(.*)\])?/); // ["",name,parameters,""]
+            if (arr){
+                var cache = this._cachedBitmaps[arr[1]];
+                if (!cache) {
+                    cache = {};
+                }
                 cache.filename = file;
                 cache.bitmap = ImageManager.loadNormalBitmap(this._tempBasePath+file,0);
                 if(arr[2].match(/F(\d+)/i)){
@@ -4110,24 +4110,50 @@ Sprite_BattlerLMBS.prototype.cacheAllBitmapsCallBack = function(files){
                 cache.bitmap.addLoadListener(function(){
                     this.height = this.bitmap.height;
                     this.width = this.bitmap.width/this.frames;
-                    if(this.parameters[2].match(/W(\d+)/i)){
+                    if (this.parameters[2].match(/W(\d+)/i)) {
                         this.boxwidth = parseInt(RegExp.$1);
                     } else {
                         this.boxwidth = this.width;
                     }
-                    if(this.parameters[2].match(/H(\d+)/i)){
+                    if (this.parameters[2].match(/H(\d+)/i)) {
                         this.boxheight = parseInt(RegExp.$1);
                     } else {
                         this.boxheight = this.height;
                     }
-                    if(this.parameters[2].match(/L/i)){
+                    if (this.parameters[2].match(/L/i)) {
                         this.loop = true;
                     } else {
                         this.loop = false;
                     }
                 }.bind(cache));
                 this._cachedBitmaps[arr[1]] = cache;
-                this._cachedBitmapNames.push(arr[1]);
+                if (!this._cachedBitmapNames.contains(arr[1])) {
+                    this._cachedBitmapNames.push(arr[1]);
+                }
+            }
+        } else if (file.search(/(.+)\.json/) >= 0) {
+            var posename = RegExp.$1;
+            var cache = this._cachedBitmaps[posename];
+            if (!cache) {
+                cache = {};
+            }
+            cache.jsonFile = file;
+            var xhr = new XMLHttpRequest();
+            var url = this._tempBasePath+file;
+            xhr.open('GET', url);
+            xhr.overrideMimeType('application/json');
+            xhr.onload = function() {
+                if (xhr.status < 400) {
+                    cache.json = JSON.parse(xhr.responseText);
+                }
+            };
+            xhr.onerror = function() {
+                DataManager._errorUrl = DataManager._errorUrl || url;
+            };
+            xhr.send();
+            this._cachedBitmaps[posename] = cache;
+            if (!this._cachedBitmapNames.contains(posename)) {
+                this._cachedBitmapNames.push(posename);
             }
         }
 	}
@@ -4676,13 +4702,11 @@ Sprite_AnimationLMBS.prototype.updateTestData = function() {
         var color = "rgba(0,255,0,0.5)";
         for (var i = 0; i < this._processingTiming.length; i++) {
             var obj = this._processingTiming[i];
-            var rects = obj.rects;
-            for (var ri = 0; ri < rects.length; ri++) {
-                var rect = new Rectangle(rects[ri].x,rects[ri].y,rects[ri].width,rects[ri].height);
-                rect.x += this.x;
-                rect.y += this.y;
-                SceneManager._scene._testBitmap.fillRect(rect.x,rect.y,rect.width,rect.height,color);
-            }
+            var rectsource = obj.rect;
+            var rect = new Rectangle(rectsource.x,rectsource.y,rectsource.width,rectsource.height);
+            rect.x += this.x;
+            rect.y += this.y;
+            SceneManager._scene._testBitmap.fillRect(rect.x,rect.y,rect.width,rect.height,color);
         }
     }
 }
@@ -4702,14 +4726,12 @@ Sprite_AnimationLMBS.prototype.updateDamage = function() {
     };
     for (var i = 0; i < this._processingTiming.length; i++) {
         var obj = this._processingTiming[i];
-        var rects = obj.rects;
+        var rectsource = obj.rect;
         this._action._damagePercentage = obj.damagePer;
-        for (var ri = 0; ri < rects.length; ri++) {
-            var rect = new Rectangle(rects[ri].x,rects[ri].y,rects[ri].width,rects[ri].height);
-            rect.x += this.x;
-            rect.y += this.y;
-            memb.forEach(func, this);
-        }
+        var rect = new Rectangle(rectsource.x,rectsource.y,rectsource.width,rectsource.height);
+        rect.x += this.x;
+        rect.y += this.y;
+        memb.forEach(func, this);
     }
 }
 
