@@ -4093,7 +4093,8 @@ Sprite_BattlerLMBS.prototype.cacheAllBitmapsCallBack = function(files){
 		var file = files[i];
         if (file.search( /(.+)\.png/) >= 0){ 
             var filename = RegExp.$1;
-            var arr = filename.match(/(.+?)(?:\[(.*)\])?/); // ["",name,parameters,""]
+            var arr = filename.match(/(.+?)(?:\[(.*)\])?$/); // ["",name,parameters,""]
+            console.log(arr);
             if (arr){
                 var cache = this._cachedBitmaps[arr[1]];
                 if (!cache) {
