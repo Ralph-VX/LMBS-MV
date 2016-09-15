@@ -8,3 +8,6 @@ See [Wiki](https://github.com/Ralph-VX/LMBS-MV/wiki) for detailed information
 - LMBSSample.zip: Sample project. Create a new project in MV and paste all file in this zip into your new project.
 - LinearMotionBattleSystem_Core.js: Plugin js file.
 - MVSVtoLMBS.exe: A simple converter use to convert MV sideview image file into image sets usable in this plugin. Drag&Drop files you want to convert on it.
+
+## Links:
+[LMBS-Editor](https://github.com/Ralph-VX/LMBS-Editor): A Java based editor for all json files that may use in this plugin.
