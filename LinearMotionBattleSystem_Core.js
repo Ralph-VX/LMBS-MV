@@ -802,7 +802,7 @@ if (!Kien.gifReader){
 // But as if we do it, then we can't call new classes with eval(), so I stop to use it.
 
 Kien.LMBS_Core.createMotionListFromNote = function(obj) {
-    if(!obj.note){
+    if(obj.note === undefined || obj.note === null){
         throw new TypeError('obj is not a proper Object');
     }
     var array = [];
@@ -820,12 +820,20 @@ Kien.LMBS_Core.createMotionListFromNote = function(obj) {
     if(array.length === 0){
         if (obj.meta["Skill Motion"]){
             var fn = obj.meta["skill Motion"];
-            var fpath = window.location.pathname.slice(1,-10) + "data/motions/" + fn + ".json";
-            try {
-                list = JSON.parse(Kien.LMBS_Core.fs.readFileSync(fpath));
-            } catch (e){
-                throw e;
-            }
+            var fpath = "data/motions/" + fn + ".json";
+            var xhr = new XMLHttpRequest();
+            var url = fpath;
+            xhr.open('GET', url, false);
+            xhr.overrideMimeType('application/json');
+            xhr.onload = function() {
+                if (xhr.status < 400) {
+                    list = JSON.parse(xhr.responseText);
+                }
+            };
+            xhr.onerror = function() {
+                DataManager._errorUrl = DataManager._errorUrl || url;
+            };
+            xhr.send();
         }
     } else {
         Kien.LMBS_Core.loadMotionList(array,list);
@@ -837,18 +845,26 @@ Kien.LMBS_Core.createAnimationTimingFromName = function(filename) {
     if (filename === "null") {
         return {};
     }
-    var fpath = window.location.pathname.slice(1,-10) + "data/animations/" + filename + ".json";
+    var fpath = "data/animations/" + filename + ".json";
     var obj = {};
-    try {
-        obj = JSON.parse(Kien.LMBS_Core.fs.readFileSync(fpath));
-    } catch (e) {
-        obj = {};
-    }
+    var xhr = new XMLHttpRequest();
+    var url = fpath;
+    xhr.open('GET', url, false);
+    xhr.overrideMimeType('application/json');
+    xhr.onload = function() {
+        if (xhr.status < 400) {
+            obj = JSON.parse(xhr.responseText);
+        }
+    };
+    xhr.onerror = function() {
+        DataManager._errorUrl = DataManager._errorUrl || url;
+    };
+    xhr.send();
     return obj;
 };
 
 Kien.LMBS_Core.getSkillPriority = function(obj) {
-    if(!obj.note){
+    if(obj.note === undefined || obj.note === null){
         throw new TypeError('obj is not a proper Object');
     }
     if(obj.meta["Skill Priority"]){
@@ -858,7 +874,7 @@ Kien.LMBS_Core.getSkillPriority = function(obj) {
 };
 
 Kien.LMBS_Core.getSkillRange = function(obj) {
-    if(!obj.note){
+    if(obj.note === undefined || obj.note === null){
         throw new TypeError('obj is not a proper Object');
     }
     if(obj.meta["Skill Range"]){
@@ -1032,7 +1048,6 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
         });
     }
     if (line.match(/^If (.+)/)){
-        console.log(["if hit",cur]);
         list.push({
             "type" : "if",
             "expression" : RegExp.$1,
@@ -1246,6 +1261,8 @@ if (!window.JSON) {
  * @type Object
  */
 Input.keyMapper[67] = 'LMBSguard';
+
+DataManager._databaseFiles.push({ name: '$dataLMBSCharacters',       src: 'characterList.json'       });
 
 //-----------------------------------------------------------------------------
 // ImageManager
@@ -4121,96 +4138,86 @@ Sprite_BattlerLMBS.prototype.onStart = function() {
 }
 
 Sprite_BattlerLMBS.prototype.cacheAllBitmaps = function(baseName,isactor){
-	var basePath = window.location.pathname.slice(1,-10) + "img/sv_actors/";
+	var basePath = "img/sv_actors/";
 	basePath = basePath.concat(baseName + "/");
 	this._cachedBitmaps = {};
     this._cachedBitmapNames = [];
 	this._tempBasePath = basePath;
-    try {
-        var files = Kien.LMBS_Core.fs.readdirSync(basePath);
-        this.cacheAllBitmapsCallBack(files);
-    } catch (e) {
-        console.log(e);
-        this._cachedBitmaps = {};
-    }
+    var names = $dataLMBSCharacters[baseName] || [];
+    this.cacheAllBitmapsCallBack(names);
 }
 
-Sprite_BattlerLMBS.prototype.cacheAllBitmapsCallBack = function(files){
-	for (var i = 0; i < files.length;i++){
-		var file = files[i];
-        if (file.search( /(.+)\.png/) >= 0){ 
-            var filename = RegExp.$1;
-            var arr = filename.match(/(.+?)(?:\[(.*)\])?$/); // ["",name,parameters,""]
-            if (arr){
-                var cache = this._cachedBitmaps[arr[1]];
-                if (!cache) {
-                    cache = {};
-                }
-                cache.filename = file;
-                cache.bitmap = ImageManager.loadNormalBitmap(this._tempBasePath+file,0);
-                if(arr[2] && arr[2].match(/F(\d+)/i)){
-                    cache.frames = RegExp.$1;
-                } else {
-                    cache.frames = 1;
-                }
-                if (cache.json) {
-                    cache.frames = cache.json.frameCount;
-                }
-                cache.parameters = arr.clone();
-                cache.bitmap.addLoadListener(function(){
-                    this.height = this.bitmap.height;
-                    this.width = this.bitmap.width/this.frames;
-                    if (this.parameters[2] && this.parameters[2].match(/W(\d+)/i)) {
-                        this.boxwidth = parseInt(RegExp.$1);
-                    } else {
-                        this.boxwidth = this.width;
-                    }
-                    if (this.parameters[2] && this.parameters[2].match(/H(\d+)/i)) {
-                        this.boxheight = parseInt(RegExp.$1);
-                    } else {
-                        this.boxheight = this.height;
-                    }
-                    if (this.parameters[2] && this.parameters[2].match(/L/i)) {
-                        this.loop = true;
-                    } else {
-                        this.loop = false;
-                    }
-                }.bind(cache));
-                this._cachedBitmaps[arr[1]] = cache;
-                if (!this._cachedBitmapNames.contains(arr[1])) {
-                    this._cachedBitmapNames.push(arr[1]);
-                }
-            }
-        } else if (file.search(/(.+)\.json/) >= 0) {
-            var posename = RegExp.$1;
-            var cache = this._cachedBitmaps[posename];
+Sprite_BattlerLMBS.prototype.cacheAllBitmapsCallBack = function(names){
+	for (var i = 0; i < names.length;i++){
+        var filename = names[i];
+        var arr = filename.match(/(.+?)(?:\[(.*)\])?$/); // ["",name,parameters,""]
+        if (arr){
+            var cache = this._cachedBitmaps[arr[1]];
             if (!cache) {
                 cache = {};
             }
-            cache.jsonFile = file;
-            var xhr = new XMLHttpRequest();
-            var url = this._tempBasePath+file;
-            xhr.open('GET', url, false);
-            xhr.overrideMimeType('application/json');
-            xhr.onload = function() {
-                if (xhr.status < 400) {
-                    cache.json = JSON.parse(xhr.responseText);
-                    if (cache.bitmap) {
-                        cache.width = cache.bitmap.width / cache.json.frameCount;
-                        cache.frames = cache.frameCount;
-                    }
+            cache.bitmap = ImageManager.loadNormalBitmap(this._tempBasePath+filename+".png",0);
+            if(arr[2] && arr[2].match(/F(\d+)/i)){
+                cache.frames = RegExp.$1;
+            } else {
+                cache.frames = 1;
+            }
+            cache.parameters = arr.clone();
+            cache.bitmap.addLoadListener(function(){
+                if (this.json) {
+                    this.frames = this.json.frameCount;
                 }
-            };
-            xhr.onerror = function() {
-                DataManager._errorUrl = DataManager._errorUrl || url;
-            };
-            xhr.send();
-            this._cachedBitmaps[posename] = cache;
-            if (!this._cachedBitmapNames.contains(posename)) {
-                this._cachedBitmapNames.push(posename);
+                this.height = this.bitmap.height;
+                this.width = this.bitmap.width/this.frames;
+                if (this.parameters[2] && this.parameters[2].match(/W(\d+)/i)) {
+                    this.boxwidth = parseInt(RegExp.$1);
+                } else {
+                    this.boxwidth = this.width;
+                }
+                if (this.parameters[2] && this.parameters[2].match(/H(\d+)/i)) {
+                    this.boxheight = parseInt(RegExp.$1);
+                } else {
+                    this.boxheight = this.height;
+                }
+                if (this.parameters[2] && this.parameters[2].match(/L/i)) {
+                    this.loop = true;
+                } else {
+                    this.loop = false;
+                }
+            }.bind(cache));
+            this._cachedBitmaps[arr[1]] = cache;
+            if (!this._cachedBitmapNames.contains(arr[1])) {
+                this._cachedBitmapNames.push(arr[1]);
             }
         }
-	}
+
+        var posename = filename;
+        var cache = this._cachedBitmaps[posename];
+        if (!cache) {
+            cache = {};
+        }
+        var xhr = new XMLHttpRequest();
+        var url = this._tempBasePath+filename+".json";
+        xhr.open('GET', url, false);
+        xhr.overrideMimeType('application/json');
+        xhr.onload = function() {
+            if (xhr.status < 400) {
+                cache.json = JSON.parse(xhr.responseText);
+                if (cache.bitmap && cache.bitmap.isReady()) {
+                    cache.width = cache.bitmap.width / cache.json.frameCount;
+                    cache.frames = cache.frameCount;
+                }
+            }
+        };
+        xhr.onerror = function() {
+            DataManager._errorUrl = DataManager._errorUrl || url;
+        };
+        xhr.send();
+        this._cachedBitmaps[posename] = cache;
+        if (!this._cachedBitmapNames.contains(posename)) {
+            this._cachedBitmapNames.push(posename);
+        }
+    }
 }
 
 
