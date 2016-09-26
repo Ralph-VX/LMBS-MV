@@ -637,7 +637,6 @@ Kien.LMBS_Core.autoGuardDuration = parseInt(Kien.LMBS_Core.parameters["Auto Guar
 
 
 
-Kien.LMBS_Core.fs = require("fs");
 
 // From https://github.com/buzzfeed/libgif-js/blob/master/libgif.js
 // License Information:
