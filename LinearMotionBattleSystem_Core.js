@@ -897,9 +897,7 @@ Kien.LMBS_Core.loadMotionList = function(array, list) {
         if (cur.newDepth) {
             cur.newDepth = false;
             tree.push(cur);
-            console.log(cur);
             cur = {"list" : cur.list[cur.list.length - 1].list || [], "newDepth" : false, "finish" : false};
-            console.log(cur);
         } else if (cur.finish) {
             if (tree.length > 0) {
                 cur = tree.pop();
@@ -958,12 +956,12 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
     if(line.match(/StartDamage ([+-]?\d+)\,([+-]?\d+)\,(\d+)\,(\d+)\,(\d+(?:\.\d+)?)\,(\d+)\,(\d+)\,(\d+)/)) {
         list.push({
             "type" : "startdamage",
-            "rect" : {"x":     parseInt(RegExp.$1,10),
-                      "y":     parseInt(RegExp.$2,10),
-                      "width": parseInt(RegExp.$3,10),
-                      "height":parseInt(RegExp.$4,10)},
+            "rect" : {"x":     parseFloat(RegExp.$1,10),
+                      "y":     parseFloat(RegExp.$2,10),
+                      "width": parseFloat(RegExp.$3,10),
+                      "height":parseFloat(RegExp.$4,10)},
             "damage": parseFloat(RegExp.$5),
-            "knockback": {"x": parseInt(RegExp.$6,10),"y": parseInt(RegExp.$7,10)},
+            "knockback": {"x": parseFloat(RegExp.$6,10),"y": parseFloat(RegExp.$7,10)},
             "knockdir": RegExp.$8 ? parseInt(RegExp.$8,10) : 0
         });
     }
@@ -999,7 +997,7 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
         list.push({
             "type" : "applydamage",
             "damage" : parseFloat(RegExp.$1),
-            "knockback": {"x" : parseInt(RegExp.$2,10), "y" : parseInt(RegExp.$3,10)},
+            "knockback": {"x" : parseFloat(RegExp.$2,10), "y" : parseFloat(RegExp.$3,10)},
             "knockdir" : parseInt(RegExp.$4,10)
         });
     }
@@ -1047,6 +1045,12 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "type" : "endif"
         });
         cur.finish = true;
+    }
+    if(line.match(/(?:ChangeWeapon$|(?:ChangeWeapon[ ]?(.+)))/)) {
+        list.push({
+            "type" : "changeweapon",
+            "name" : RegExp.$1
+        });
     }
     Kien.LMBS_Core.loadExtraLine(line,cur);
 }
@@ -1250,6 +1254,10 @@ Input.keyMapper[67] = 'LMBSguard';
 
 ImageManager.loadProjectile = function(filename, hue) {
     return this.loadBitmap('img/projectile/', filename, hue, false);
+};
+
+ImageManager.loadWeapon = function(filename) {
+    return this.loadBitmap('img/weapons/', filename, 0, false);
 };
 
 //-----------------------------------------------------------------------------
@@ -1667,6 +1675,9 @@ DefaultMotionDescriptor.prototype.processMotion = function(obj) {
         case "endif":
         // Do nothing in DefaultMotionDescriptor, as this is not in a if statement.
             break;
+        case "changeweapon":
+            this._battler._weaponName = obj.name;
+            break;
     }
     return false;
 }
@@ -1823,6 +1834,7 @@ Game_Battler.prototype.initMembers = function(){
     this._forceWaitCount = 0; // count for hit-stop.
     this._hitStopLength = 15; // Length of hit-stop.
     this._knockbacking = false; // Is knockback or not
+    ; // Weapon name specified by skill motion.
 };
 
 
@@ -2264,6 +2276,7 @@ Game_Battler.prototype.endMotion = function() {
     this._skillMotionDescriptor = null; // Skill motion descriptor for current motion.
     this._patternIndex = -1;
     this._pose = "Stand";
+    this._weaponName = null;
     this._waitInput = false; // accepting input.
     this._motionFall = true;
     this._rotation = 0;
@@ -2372,6 +2385,10 @@ Game_Battler.prototype.forceDamage = function(target) {
         target.endMotion();
     }
     BattleManager.refreshStatus();
+}
+
+Game_Battler.prototype.getWeaponName = function() {
+    return this._weaponName;
 }
 
 //-----------------------------------------------------------------------------
@@ -3335,6 +3352,23 @@ Game_Actor.prototype.performVictorySkill = function() {
     }
 }
 
+
+Game_Actor.prototype.getWeaponName = function() {
+    if (this._weaponName) {
+        return weaponName;
+    }
+    if (this.weapons()[0] && this.weapons()[0].meta["Weapon Name"]) {
+        return this.this.weapons()[0].meta["Weapon Name"];
+    }
+    if (this.currentClass() && this.currentClass().meta["Weapon Name"]) {
+        return this.currentClass().meta["Weapon Name"];
+    }
+    if (this.actor() && this.actor().meta["Weapon Name"]) {
+        return this.actor().meta["Weapon Name"];
+    }
+    return "";
+}
+
 //-----------------------------------------------------------------------------
 // Game_LMBSAiActorPhysicalAction
 //
@@ -3758,6 +3792,16 @@ Game_Enemy.prototype.startAiIdle = function(canMove) {
     this.pushAi(Game_LMBSAiIdleAction, obj);
 }
 
+Game_Enemy.prototype.getWeaponName = function() {
+    if (this._weaponName) {
+        return this.weaponName;
+    }
+    if (this.enemy().meta["Weapon Name"]) {
+        return this.enemy().meta["Weapon Name"];
+    }
+    return "";
+}
+
 //-----------------------------------------------------------------------------
 // Game_Unit
 //
@@ -4058,6 +4102,9 @@ Sprite_BattlerLMBS.prototype.initMembers = function(battler){
     this.anchor.y = 0.5;
     this._damages = [];
     this._projectiles = [];
+    this._weaponParentSprite = new Sprite();
+    this._weaponSprite = new Sprite_WeaponLMBS(this._weaponParentSprite);
+    this.addChild(this._weaponParentSprite);
     this.clearMotion();
 }
 
@@ -4094,7 +4141,6 @@ Sprite_BattlerLMBS.prototype.cacheAllBitmapsCallBack = function(files){
         if (file.search( /(.+)\.png/) >= 0){ 
             var filename = RegExp.$1;
             var arr = filename.match(/(.+?)(?:\[(.*)\])?$/); // ["",name,parameters,""]
-            console.log(arr);
             if (arr){
                 var cache = this._cachedBitmaps[arr[1]];
                 if (!cache) {
@@ -4102,26 +4148,29 @@ Sprite_BattlerLMBS.prototype.cacheAllBitmapsCallBack = function(files){
                 }
                 cache.filename = file;
                 cache.bitmap = ImageManager.loadNormalBitmap(this._tempBasePath+file,0);
-                if(arr[2].match(/F(\d+)/i)){
+                if(arr[2] && arr[2].match(/F(\d+)/i)){
                     cache.frames = RegExp.$1;
                 } else {
                     cache.frames = 1;
+                }
+                if (cache.json) {
+                    cache.frames = cache.json.frameCount;
                 }
                 cache.parameters = arr.clone();
                 cache.bitmap.addLoadListener(function(){
                     this.height = this.bitmap.height;
                     this.width = this.bitmap.width/this.frames;
-                    if (this.parameters[2].match(/W(\d+)/i)) {
+                    if (this.parameters[2] && this.parameters[2].match(/W(\d+)/i)) {
                         this.boxwidth = parseInt(RegExp.$1);
                     } else {
                         this.boxwidth = this.width;
                     }
-                    if (this.parameters[2].match(/H(\d+)/i)) {
+                    if (this.parameters[2] && this.parameters[2].match(/H(\d+)/i)) {
                         this.boxheight = parseInt(RegExp.$1);
                     } else {
                         this.boxheight = this.height;
                     }
-                    if (this.parameters[2].match(/L/i)) {
+                    if (this.parameters[2] && this.parameters[2].match(/L/i)) {
                         this.loop = true;
                     } else {
                         this.loop = false;
@@ -4141,11 +4190,15 @@ Sprite_BattlerLMBS.prototype.cacheAllBitmapsCallBack = function(files){
             cache.jsonFile = file;
             var xhr = new XMLHttpRequest();
             var url = this._tempBasePath+file;
-            xhr.open('GET', url);
+            xhr.open('GET', url, false);
             xhr.overrideMimeType('application/json');
             xhr.onload = function() {
                 if (xhr.status < 400) {
                     cache.json = JSON.parse(xhr.responseText);
+                    if (cache.bitmap) {
+                        cache.width = cache.bitmap.width / cache.json.frameCount;
+                        cache.frames = cache.frameCount;
+                    }
                 }
             };
             xhr.onerror = function() {
@@ -4180,6 +4233,7 @@ Sprite_BattlerLMBS.prototype.update = function() {
         this.updateDamagePopup();
         this.updateProjectile();
         this.updateTestData();
+        this.updateWeaponSprite();
     }
 }
 
@@ -4191,7 +4245,7 @@ Sprite_BattlerLMBS.prototype.updateBitmap = function() {
             this.clearMotion();
         } else {
             if (this._pose == "Stand"){
-                throw new Error("You must atleast have a graph name \"Stand\" for all of your battlers");
+                throw new Error("You Don't have pose \"Stand\" for your battler: " + this._battler.battlerName());
             }
             this._battler._pose = "Stand";
             this._pose = "undefined";
@@ -4200,11 +4254,93 @@ Sprite_BattlerLMBS.prototype.updateBitmap = function() {
     }
 }
 
+Sprite_BattlerLMBS.prototype.getCurrentFrameCount = function() {
+    if (this.currentBitmapCache().json) {
+        return this.currentBitmapCache().json.frameCount;
+    } else {
+        return this.currentBitmapCache().frames;
+    }
+}
+
+Sprite_BattlerLMBS.prototype.getCurrentLoop = function() {
+    if (this.currentBitmapCache().json) {
+        return this.currentBitmapCache().json.loop;
+    } else {
+        return this.currentBitmapCache().loop;
+    }
+}
+
+Sprite_BattlerLMBS.prototype.getCurrentWeaponX = function() {
+    if (this.currentBitmapCache().json) {
+        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+        return this.currentBitmapCache().json.frames[pi].weaponX;
+    }
+    return 0;
+}
+
+Sprite_BattlerLMBS.prototype.getCurrentWeaponY = function() {
+    if (this.currentBitmapCache().json) {
+        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+        return this.currentBitmapCache().json.frames[pi].weaponY;
+    }
+    return 0;
+}
+
+Sprite_BattlerLMBS.prototype.getCurrentWeaponAngle = function() {
+    if (this.currentBitmapCache().json) {
+        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+        return this.currentBitmapCache().json.frames[pi].weaponAngle;
+    }
+    return 0;
+}
+
+Sprite_BattlerLMBS.prototype.getCurrentWeaponHide = function() {
+    if (this.currentBitmapCache().json) {
+        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+        return this.currentBitmapCache().json.frames[pi].hideWeapon;
+    }
+    return false;
+}
+
+Sprite_BattlerLMBS.prototype.getCurrentWeaponBack = function() {
+    if (this.currentBitmapCache().json) {
+        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+        return this.currentBitmapCache().json.frames[pi].weaponBack;
+    }
+    return false;
+}
+
+Sprite_BattlerLMBS.prototype.getCurrentWeaponMirror = function() {
+    if (this.currentBitmapCache().json) {
+        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+        return this.currentBitmapCache().json.frames[pi].weaponMirror;
+    }
+    return false;
+}
+
+Sprite_BattlerLMBS.prototype.getCurrentBoxWidth = function() {
+    if (this.currentBitmapCache().json) {
+        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+        return this.currentBitmapCache().json.frames[pi].width;
+    } else {
+        return this.currentBitmapCache().boxwidth;
+    }
+}
+
+Sprite_BattlerLMBS.prototype.getCurrentBoxHeight = function() {
+    if (this.currentBitmapCache().json) {
+        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+        return this.currentBitmapCache().json.frames[pi].height;
+    } else {
+        return this.currentBitmapCache().boxheight;
+    }
+}
+
 Sprite_BattlerLMBS.prototype.updateAnimation = function() {
-    if(this.bitmap && this.currentBitmapCache().frames > 1){
+    if(this.bitmap && this.getCurrentFrameCount() > 1){
         this._animationCount++;
-        if(this._animationCount >= this.currentBitmapCache().frames * Kien.LMBS_Core.animationSpeed){
-            this._animationCount = this.currentBitmapCache().loop ? 0 : (this.currentBitmapCache().frames * Kien.LMBS_Core.animationSpeed -1);
+        if(this._animationCount >= this.getCurrentFrameCount() * Kien.LMBS_Core.animationSpeed){
+            this._animationCount = this.getCurrentLoop() ? 0 : (this.getCurrentFrameCount() * Kien.LMBS_Core.animationSpeed -1);
         }
     }
     
@@ -4214,8 +4350,8 @@ Sprite_BattlerLMBS.prototype.updateFrame = function() {
     if(this.bitmap){
         var fw = this.currentBitmapCache().width
         var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
-        if (pi >= this.currentBitmapCache().frames) {
-            pi = this.currentBitmapCache().frames-1;
+        if (pi >= this.getCurrentFrameCount()) {
+            pi = this.getCurrentFrameCount()-1;
             this._battler._patternIndex = pi;
         }
         var fx = pi * fw;
@@ -4245,8 +4381,8 @@ Sprite_BattlerLMBS.prototype.updatePosition = function() {
 Sprite_BattlerLMBS.prototype.battlerBox = function() {
     var rect = new Rectangle(this._battler.screenX(),this._battler.screenY(),0,0);
     if (this.bitmap){
-        rect.width = this.currentBitmapCache().boxwidth;
-        rect.height = this.currentBitmapCache().boxheight;
+        rect.width = this.getCurrentBoxWidth();
+        rect.height = this.getCurrentBoxHeight();
         rect.x -= rect.width/2;
         rect.y -= rect.height;
     }
@@ -4256,9 +4392,6 @@ Sprite_BattlerLMBS.prototype.battlerBox = function() {
 Sprite_BattlerLMBS.prototype.updateDamagePopup = function() {
     this.setupDamagePopup();
     if (this._damages.length > 0) {
-        for (var i = 0; i < this._damages.length; i++) {
-            //this._damages[i].update();
-        }
         if (!this._damages[0].isPlaying()) {
             this.parent.removeChild(this._damages[0]);
             this._damages.shift();
@@ -4325,6 +4458,18 @@ Sprite_BattlerLMBS.prototype.updateTestData = function() {
     }
 }
 
+Sprite_BattlerLMBS.prototype.updateWeaponSprite = function() {
+    if (this._battler.getWeaponName() != this._weaponSprite._name) {
+        this._weaponSprite.setup(this._battler.getWeaponName());
+    }
+    this._weaponParentSprite.x = this.getCurrentWeaponX() ? this.getCurrentWeaponX() : 0;
+    this._weaponParentSprite.y = this.getCurrentWeaponY() ? this.getCurrentWeaponY() : 0;
+    this._weaponSprite._hide = this.getCurrentWeaponHide();
+    this._weaponSprite._angle = this.getCurrentWeaponAngle() ? this.getCurrentWeaponAngle() : 0;
+    this._weaponParentSprite.scale.x = this.getCurrentWeaponMirror() ? -1 : 1;
+    this._weaponSprite.update();
+}
+
 Sprite_BattlerLMBS.prototype.setupDamagePopup = function() {
     if (this._battler.isDamagePopupRequested()) {
         var sprite = new Sprite_Damage();
@@ -4367,6 +4512,125 @@ Sprite_BattlerLMBS.prototype.targetSprite = function() {
     return this.parent.findSprite(this._battler._target);
 }
 
+Sprite_BattlerLMBS.prototype.renderWebGL = function (renderer)
+{
+
+    // if the object is not visible or the alpha is 0 then no need to render this element
+    if (!this.visible || this.worldAlpha <= 0 || !this.renderable)
+    {
+
+        return;
+    }
+
+    var i, j;
+
+    // do a quick check to see if this element has a mask or a filter.
+    if (this._mask || this._filters)
+    {
+        renderer.currentRenderer.flush();
+
+        // push filter first as we need to ensure the stencil buffer is correct for any masking
+        if (this._filters && this._filters.length)
+        {
+            renderer.filterManager.pushFilter(this, this._filters);
+        }
+
+        if (this._mask)
+        {
+            renderer.maskManager.pushMask(this, this._mask);
+        }
+
+        renderer.currentRenderer.start();
+
+        // Render children first if this.getCurrentWeaponBack returns true.
+        if (this.getCurrentWeaponBack()) {
+            for (i = 0, j = this.children.length; i < j; i++)
+            {
+                this.children[i].renderWebGL(renderer);
+            }
+            this._renderWebGL(renderer);
+        } else {
+            // add this object to the batch, only rendered if it has a texture.
+            this._renderWebGL(renderer);
+
+            // now loop through the children and make sure they get rendered
+            for (i = 0, j = this.children.length; i < j; i++)
+            {
+                this.children[i].renderWebGL(renderer);
+            }
+
+        }
+        renderer.currentRenderer.flush();
+
+        if (this._mask)
+        {
+            renderer.maskManager.popMask(this, this._mask);
+        }
+
+        if (this._filters)
+        {
+            renderer.filterManager.popFilter();
+
+        }
+        renderer.currentRenderer.start();
+    }
+    else
+    {
+        if (this.getCurrentWeaponBack()) {
+            // simple render children!
+            for (i = 0, j = this.children.length; i < j; ++i)
+            {
+                this.children[i].renderWebGL(renderer);
+            }
+            this._renderWebGL(renderer);
+
+        } else {
+            this._renderWebGL(renderer);
+
+            // simple render children!
+            for (i = 0, j = this.children.length; i < j; ++i)
+            {
+                this.children[i].renderWebGL(renderer);
+            }
+        }
+    }
+};
+
+/**
+ * Renders the object using the Canvas renderer
+ *
+ * @param renderer {PIXI.CanvasRenderer} The renderer
+ */
+ Sprite_BattlerLMBS.prototype.renderCanvas = function (renderer)
+ {
+    // if not visible or the alpha is 0 then no need to render this
+    if (!this.visible || this.alpha <= 0 || !this.renderable)
+    {
+        return;
+    }
+
+    if (this._mask)
+    {
+        renderer.maskManager.pushMask(this._mask);
+    }
+    if (this.getCurrentWeaponBack()) {
+        for (var i = 0, j = this.children.length; i < j; ++i)
+        {
+            this.children[i].renderCanvas(renderer);
+        }
+        this._renderCanvas(renderer);
+    } else {
+        this._renderCanvas(renderer);
+        for (var i = 0, j = this.children.length; i < j; ++i)
+        {
+            this.children[i].renderCanvas(renderer);
+        }
+    }
+    if (this._mask)
+    {
+        renderer.maskManager.popMask(renderer);
+    }
+};
 //-----------------------------------------------------------------------------
 // Sprite_ActorLMBS
 //
@@ -4431,6 +4695,87 @@ Sprite_EnemyLMBS.prototype.updateCollapse = function() {
     this.setBlendColor([255, 128, 128, 128]);
     this.opacity *= this._effectDuration / (this._effectDuration + 1);
 };
+
+//-----------------------------------------------------------------------------
+// Sprite_WeaponLMBS
+//
+// use to show weapon image. Properties should be set correctly by battler sprite.
+
+function Sprite_WeaponLMBS() {
+    this.initialize.apply(this, arguments);
+}
+
+Sprite_WeaponLMBS.prototype = Object.create(Sprite_Base.prototype);
+Sprite_WeaponLMBS.prototype.constructor = Sprite_WeaponLMBS;
+
+Sprite_WeaponLMBS.caches = {};
+
+Sprite_WeaponLMBS.prototype.initialize = function(parentSprite){
+    Sprite_Base.prototype.initialize.call(this);
+    parentSprite.addChild(this);
+    this._angle = 0;
+    this._hide = false;
+    this._prop = null;
+    this._name = "";
+}
+
+Sprite_WeaponLMBS.prototype.setup = function(filename) {
+    this._name = filename;
+    if (filename.length === 0) {
+        this.bitmap = null;
+        this._prop = null;
+        return;
+    }
+    this.bitmap = ImageManager.loadWeapon(filename);
+    this._prop = Sprite_WeaponLMBS.caches[filename];
+    if (!this._prop) {
+        var xhr = new XMLHttpRequest();
+        var url = 'img/weapons/'+filename+'.json';
+        xhr.open('GET', url, false);
+        xhr.overrideMimeType('application/json');
+        xhr.onload = function() {
+            if (xhr.status < 400) {
+                this._prop = JSON.parse(xhr.responseText);
+                this.onLoadFinish();
+            }
+        }.bind(this);
+        xhr.onerror = function() {
+            this._prop = {};
+            this._prop.ox = 0;
+            this._prop.oy = 0;
+            this._prop.angle = 0;
+            this.onLoadFinish();
+        }.bind(this);
+        xhr.send();
+    } else {
+        this.onLoadFinish();
+    }
+}
+
+Sprite_WeaponLMBS.prototype.update = function() {
+    if (this._prop) {
+        this.updateAngle();
+        this.updateVisible();
+        this.updateAnchor();
+    }
+}
+
+Sprite_WeaponLMBS.prototype.updateAngle = function() {
+    this.rotation = ((((this._prop.angle + this._angle ) % 360) + 360) % 360) * Math.PI / 180;
+}
+
+Sprite_WeaponLMBS.prototype.updateVisible = function() {
+    this.visible = !this._hide;
+}
+
+Sprite_WeaponLMBS.prototype.updateAnchor = function() {
+    this.anchor.x = 0.5 + this._prop.ox / this.bitmap.width;
+    this.anchor.y = 0.5 + this._prop.oy / this.bitmap.height;
+}
+
+Sprite_WeaponLMBS.prototype.onLoadFinish = function() {
+    Sprite_WeaponLMBS.caches[this._name] = this._prop;
+}
 
 //-----------------------------------------------------------------------------
 // Sprite_ProjectileLMBS
@@ -4794,7 +5139,7 @@ Sprite_AnimationLMBS.prototype.updateProcessingTiming = function() {
 //-----------------------------------------------------------------------------
 // Sprite_BattleRewardLMBS
 //
-// Basic Projectile class.
+// Sprite use to show rewards in battle result.
 
 function Sprite_BattleRewardLMBS() {
     this.initialize.apply(this, arguments);
