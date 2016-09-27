@@ -69,6 +69,10 @@ Kien.LMBS_Core = {};
  * @desc 
  * @default 
  *
+ * @param Enable Default
+ * @desc enable the battle system by default.
+ * @default true
+ *
  * @param Debug Mode
  * @desc Shows the range of hitboxes with colored rects. Only works in Test
  * Mode.
@@ -633,6 +637,7 @@ Kien.LMBS_Core.battleSkillName = (Kien.LMBS_Core.parameters["Battle Skill Comman
 Kien.LMBS_Core.battleItemName = (Kien.LMBS_Core.parameters["Battle Item Command Name"]);
 Kien.LMBS_Core.battleEndWaitTime = parseInt(Kien.LMBS_Core.parameters["Battle End Wait Time"]);
 Kien.LMBS_Core.autoGuardDuration = parseInt(Kien.LMBS_Core.parameters["Auto Guard Time After Guard"]);
+Kien.LMBS_Core.enableDefault = eval(Kien.LMBS_Core.parameters["Enable Default"]);
 
 
 
@@ -1401,6 +1406,17 @@ Game_Screen.prototype.zoomBattleCameraAt = function(targets) {
     } else {
         this.setZoom(0,0,1.0);
     }
+}
+
+//-----------------------------------------------------------------------------
+// Game_System
+//
+// The game object class for the system data.
+
+Kien.LMBS_Core.Game_System_initialize = Game_System.prototype.initialize;
+Game_System.prototype.initialize = function() {
+    Kien.LMBS_Core.Game_System_initialize.apply(this);
+    this._LMBSEnabled = Kien.LMBS_Core.enableDefault;
 }
 
 //-----------------------------------------------------------------------------
@@ -2198,10 +2214,12 @@ Game_Battler.prototype.updateCollide = function() {
         });
         if (index != -1 ){
             var bat = members[index]._battleRect;
-            if (bat.x > newrect.x){
-                this.forceMoveWith(-1);
+            if (bat.x >= newrect.x){
+                this.forceMoveWith(-4);
+                other.forceMoveWith(4);
             } else {
-                this.forceMoveWith(1);
+                this.forceMoveWith(4);
+                other.forceMoveWith(-4);
             }
             return;
         }
@@ -2209,14 +2227,17 @@ Game_Battler.prototype.updateCollide = function() {
     if(!Kien.LMBS_Core.moveThroughEnemy && !(Kien.LMBS_Core.dashThroughEnemy && this.isDashing())){
         members = this.opponentsUnit().members();
         var index = members.findIndex(function(obj) {
-            return obj.isOpaque() && newrect.overlap(obj._battleRect) && !(Kien.LMBS_Core.dashThroughEnemy && obj.isDashing());
+            return obj.isOpaque() && newrect.overlap(obj._battleRect) && !(Kien.LMBS_Core.dashThroughEnemy && !obj.isDashing());
         });
         if (index != -1 ){
             var bat = members[index]._battleRect;
-            if (bat.x > newrect.x){
-                this.forceMoveWith(-1);
+            var other = members[index];
+            if (bat.x >= newrect.x){
+                this.forceMoveWith(-4);
+                other.forceMoveWith(4);
             } else {
-                this.forceMoveWith(1);
+                other.forceMoveWith(-4);
+                this.forceMoveWith(4);
             }
             return;
         }
@@ -3028,8 +3049,10 @@ Game_Actor.prototype.clearAiData = function() {
     this._aiTree = [];
     this._aiData.readySkill = null; // Skill that character Ai is trying to use.
     this._aiData.forceAi = false; // Force to move by AI even the player is controlling it
-    var ai = eval(this._aiData.classname);
-    this.pushAi(ai);
+    if ($gameParty.inBattle()) {
+        var ai = eval(this._aiData.classname);
+        this.pushAi(ai);
+    }
 }
 
 Game_Actor.prototype.resetAi = function() {
@@ -3117,7 +3140,13 @@ Game_Actor.prototype.initImages = function() {
 
 Game_Actor.prototype.onBattleStart = function() {
     Game_Battler.prototype.onBattleStart.call(this);
+    this.resetAi();
     this.initAttackSkills();
+};
+
+Game_Actor.prototype.onBattleEnd = function() {
+    Game_Battler.prototype.onBattleEnd.call(this);
+    this.resetAi();
 };
 
 Game_Actor.prototype.update = function() {
@@ -3602,11 +3631,11 @@ Game_Enemy.prototype.forceAi = function(aiClass,obj) {
 }
 
 Game_Enemy.prototype.screenX = function(){
-    return this._battleX;
+    return $gameSystem._LMBSEnabled ? this._battleX : this._screenX;
 };
 
 Game_Enemy .prototype.screenY = function(){
-    return Kien.LMBS_Core.battleY - this._battleY;
+    return $gameSystem._LMBSEnabled ? Kien.LMBS_Core.battleY - this._battleY : this._screenY;
 };
 
 Kien.LMBS_Core.Game_Enemy_setup = Game_Enemy.prototype.setup;
@@ -3752,6 +3781,9 @@ Game_Enemy.prototype.actionsToSkills = function(actionList) {
 
 Kien.LMBS_Core.Game_Enemy_battlerName = Game_Enemy.prototype.battlerName;
 Game_Enemy.prototype.battlerName = function() {
+    if (!$gameSystem._LMBSEnabled) {
+        return Kien.LMBS_Core.Game_Enemy_battlerName.call(this);
+    }
     if(typeof this._battlerName == "undefined"){
     	if(this.enemy().meta["Battler Name"]){
     		this._battlerName = this.enemy().meta["Battler Name"];
@@ -3856,8 +3888,12 @@ Game_Party.prototype.battlerPosition = function(battler){
 // The interpreter for running event commands.
 
 // Battle Processing
+Kien.LMBS_Core.Game_Interpreter_command301 = Game_Interpreter.prototype.command301;
 Game_Interpreter.prototype.command301 = function() {
     if (!$gameParty.inBattle()) {
+        if (!$gameSystem._LMBSEnabled) {
+            return Kien.LMBS_Core.Game_Interpreter_command301.call(this);
+        }
         var troopId;
         if (this._params[0] === 0) {  // Direct designation
             troopId = this._params[1];
@@ -4113,7 +4149,10 @@ Sprite_BattlerLMBS.prototype.initMembers = function(battler){
     if (this._battler){
         this.cacheAllBitmaps(this._battler.battlerName(),this._battler.isActor());
     }
+    this._facing = false;
+    this._poseName = "undefined";
     this._pose = "undefined";
+    this._forceNoMirror = false;
     this.anchor.x = 0.5;
     this.anchor.y = 0.5;
     this._damages = [];
@@ -4243,18 +4282,31 @@ Sprite_BattlerLMBS.prototype.update = function() {
     }
 }
 
+Sprite_BattlerLMBS.prototype.poseNameWithDirection = function(name, facing) {
+    return name + (facing ? "R" : "L");
+}
+
+
 Sprite_BattlerLMBS.prototype.updateBitmap = function() {
-    if (this._pose != this._battler._pose) {
-        this._pose = this._battler._pose;
-        if(this._cachedBitmaps[this._pose]){
+    if (this._poseName != this._battler._pose || this._facing != this._battler._facing) {
+        this._poseName = this._battler._pose;
+        this._facing = this._battler._facing;
+        if(this._cachedBitmaps[this.poseNameWithDirection(this._poseName, this._facing)]){
+            this._pose = this.poseNameWithDirection(this._poseName, this._facing);
+            this._forceNoMirror = true;
+            this.bitmap = this._cachedBitmaps[this._pose].bitmap;
+            this.clearMotion();
+        } else if (this._cachedBitmaps[this._poseName]){
+            this._pose = this._poseName;
             this.bitmap = this._cachedBitmaps[this._pose].bitmap;
             this.clearMotion();
         } else {
-            if (this._pose == "Stand"){
+            if (this._poseName == "Stand"){
                 throw new Error("You Don't have pose \"Stand\" for your battler: " + this._battler.battlerName());
             }
             this._battler._pose = "Stand";
             this._pose = "undefined";
+            this._poseName = "undefined";
             this.updateBitmap();
         }
     }
@@ -5323,6 +5375,22 @@ Sprite_BattleRewardLMBS.prototype.updateAllParts = function() {
     }
 }
 
+function Sprite_EscapeGauge() {
+    this.initialize.apply(this, arguments);
+}
+
+Sprite_EscapeGauge.prototype = Object.create(Sprite_Base.prototype);
+Sprite_EscapeGauge.prototype.constructor = Sprite_EscapeGauge;
+
+Sprite_EscapeGauge.prototype.initialize = function() {
+    Sprite_Base.prototype.initialize.apply(this, arguments);
+    this.createBitmap();
+}
+
+Sprite_EscapeGauge.prototype.createBitmap = function() {
+    this.bitmap = new Bitmap(Graphics.width, 30);
+}
+
 //-----------------------------------------------------------------------------
 // Spriteset_BattleLMBS
 //
@@ -5549,10 +5617,16 @@ Spriteset_BattleLMBS.prototype.autotileType = function(z) {
 //
 // The scene class of the map screen.
 
+
+Kien.LMBS_Core.Scene_Map_updateEncounter = Scene_Map.prototype.updateEncounter;
 Scene_Map.prototype.updateEncounter = function() {
-   if ($gamePlayer.executeEncounter()) {
-       SceneManager.push(Scene_BattleLMBS);
-   }
+    if (!$gameSystem._LMBSEnabled){
+        Kien.LMBS_Core.Scene_Map_updateEncounter.call(this);
+        return;
+    }
+    if ($gamePlayer.executeEncounter()) {
+        SceneManager.push(Scene_BattleLMBS);
+    }
 };
 
 //-----------------------------------------------------------------------------
