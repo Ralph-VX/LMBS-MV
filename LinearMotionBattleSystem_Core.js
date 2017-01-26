@@ -117,6 +117,11 @@ Kien.LMBS_Core = {};
  * player able to cast skill assigned in up.
  * @default 6
  *
+ * @param Pause Game While Event By Default
+ * @desc pause the game or not while event is running by default. Can be triggered via
+ * plugin command.
+ * @default false
+ *
  * @param ===Menu Settings===
  * @desc 
  * @default 
@@ -383,6 +388,7 @@ Kien.LMBS_Core.enemyXStart = eval(Kien.LMBS_Core.parameters["Enemy X Start"]);
 Kien.LMBS_Core.skillTypeName = Kien.LMBS_Core.parameters["Skill Set Name"];
 Kien.LMBS_Core.skillSetRightLeft = eval(Kien.LMBS_Core.parameters["Skill Set Left Right Act Same"]);
 Kien.LMBS_Core.inputDelay = parseInt(Kien.LMBS_Core.parameters["Delay for jump"]);
+Kien.LMBS_Core.defaultBattleEventPause = parseInt(Kien.LMBS_Core.parameters["Pause Game While Event By Default"]);
 Kien.LMBS_Core.maxCameraZoom = parseFloat(Kien.LMBS_Core.parameters["Max Camera Zoom"]);
 Kien.LMBS_Core.minCameraZoom = parseFloat(Kien.LMBS_Core.parameters["Min Camera Zoom"]);
 Kien.LMBS_Core.leftCameraMargin = parseInt(Kien.LMBS_Core.parameters["Camera Left Margin"]);
@@ -941,33 +947,34 @@ if (!Array.prototype.clear) {
 // Rectangle
 //
 // Define a utility Function.
+if (!Rectangle.prototype.cx) {
+    Object.defineProperty(Rectangle.prototype, 'cx', {
+        get: function() {
+            return this.x + this.width/2;
+        },
+        configurable: true
+    });
 
-Object.defineProperty(Rectangle.prototype, 'cx', {
-    get: function() {
-        return this.x + this.width/2;
-    },
-    configurable: true
-});
+    Object.defineProperty(Rectangle.prototype, 'cy', {
+        get: function() {
+            return this.y + this.height/2;
+        },
+        configurable: true
+    });
 
-Object.defineProperty(Rectangle.prototype, 'cy', {
-    get: function() {
-        return this.y + this.height/2;
-    },
-    configurable: true
-});
+    Rectangle.prototype.overlap = function(other) {
+        return (Math.abs(this.cx - other.cx) <= (this.width/2 + other.width/2)) && (Math.abs(this.cy - other.cy) <= (this.height/2 + other.height/2))
+    };
 
-Rectangle.prototype.overlap = function(other) {
-    return (Math.abs(this.cx - other.cx) <= (this.width/2 + other.width/2)) && (Math.abs(this.cy - other.cy) <= (this.height/2 + other.height/2))
-};
-
-Rectangle.prototype.clone = function() {
-    var rect = new Rectangle(0,0,0,0);
-    rect.x = this.x;
-    rect.y = this.y;
-    rect.width = this.width;
-    rect.height = this.height;
-    return rect;
-};
+    Rectangle.prototype.clone = function() {
+        var rect = new Rectangle(0,0,0,0);
+        rect.x = this.x;
+        rect.y = this.y;
+        rect.width = this.width;
+        rect.height = this.height;
+        return rect;
+    };
+}
 
 //-----------------------------------------------------------------------------
 // JSON
@@ -1013,6 +1020,18 @@ if (!window.JSON) {
   };
 };
 
+if (!Math.deg2Rad) {
+    Math.deg2Rad = function(degree) {
+        return (((degree % 360) + 360) % 360) * Math.PI / 180;
+    }
+}
+
+if (!Math.rad2Deg) {
+    Math.rad2Deg = function(radian) {
+        return ((((radian / Math.PI) * 180) % 360 ) + 360) % 360;
+    }
+}
+
 /**
  * A hash table to convert from a virtual key code to a mapped key name.
  *
@@ -1035,6 +1054,19 @@ ImageManager.loadProjectile = function(filename, hue) {
 
 ImageManager.loadWeapon = function(filename) {
     return this.loadBitmap('img/weapons/', filename, 0, false);
+};
+
+//-----------------------------------------------------------------------------
+// SceneManager
+//
+// The static class that manages scene transitions.
+
+Kien.LMBS_Core.SceneManager_isNextScene = SceneManager.isNextScene;
+SceneManager.isNextScene = function(sceneClass) {
+    if (sceneClass === Scene_Battle) {
+        return Kien.LMBS_Core.SceneManager_isNextScene.call(this, Scene_BattleLMBS) || Kien.LMBS_Core.SceneManager_isNextScene.call(this, sceneClass);
+    };
+    return Kien.LMBS_Core.SceneManager_isNextScene.call(this, sceneClass);
 };
 
 //-----------------------------------------------------------------------------
@@ -1173,6 +1205,7 @@ Kien.LMBS_Core.Game_System_initialize = Game_System.prototype.initialize;
 Game_System.prototype.initialize = function() {
     Kien.LMBS_Core.Game_System_initialize.apply(this);
     this._LMBSEnabled = Kien.LMBS_Core.enableDefault;
+    this._LMBSBattleEventPauseGame = false;
 }
 
 //-----------------------------------------------------------------------------
@@ -3670,6 +3703,16 @@ Game_Interpreter.prototype.command301 = function() {
     return true;
 }
 
+Game_interpreter.prototype.setEventPause = function(args) {
+    if (args[0] == "true") {
+        $gameSystem._LMBSBattleEventPauseGame = true;
+    } else if (args[0] == "false") {
+        %gameSystem._LMBSBattleEventPauseGame = false;
+    }
+}
+
+Kien.lib.addPluginCommand("PauseBattle",Game_Interpreter.prototype.setEventPause);
+
 //-----------------------------------------------------------------------------
 // Window_SkillType
 //
@@ -4575,7 +4618,7 @@ Sprite_WeaponLMBS.prototype.update = function() {
 }
 
 Sprite_WeaponLMBS.prototype.updateAngle = function() {
-    this.rotation = ((((this._prop.angle + this._angle ) % 360) + 360) % 360) * Math.PI / 180;
+    this.rotation = Math.deg2Rad(this._prop.angle + this._angle);
 }
 
 Sprite_WeaponLMBS.prototype.updateVisible = function() {
@@ -5644,6 +5687,7 @@ Scene_BattleLMBS.prototype.createRewardSprite = function() {
 
 Scene_BattleLMBS.prototype.start = function() {
     Scene_Base.prototype.start.call(this);
+    this.startFadeIn(this.fadeSpeed(), false);
     this._spriteset.onStart();
     BattleManager.playBattleBgm();
     BattleManager.startBattle();
