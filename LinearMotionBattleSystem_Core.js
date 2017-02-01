@@ -3008,13 +3008,13 @@ Game_Actor.prototype.updateInputGuard = function() {
 }
 
 Game_Actor.prototype.updateInputAttack = function() {
-    if(Input.isPressed('ok')){
+    if(Input.isTriggered('ok')){
         this.useNormalAttack(Input.dir4);
     }
 }
 
 Game_Actor.prototype.updateInputSkill = function() {
-    if(Input.isPressed('cancel')){
+    if(Input.isTriggered('cancel')){
         var d4 = Input.dir4;
         if(d4 == 4){
             d4 = (this._facing ? 4 : 6)
@@ -4055,7 +4055,7 @@ Window_MessageLMBS.prototype.constructor = Window_MessageLMBS;
 
 Window_MessageLMBS.prototype.initialize = function() {
     Window_Message.prototype.initialize.call(this);
-    this._lastBattleEventPause = false;
+    this._lastBattleEventPause = null;
     this._autoMessageSkippingDuration = 120;
 };
 
@@ -4079,6 +4079,22 @@ Window_MessageLMBS.prototype.updateInput = function() {
     }
 };
 
+Window_MessageLMBS.prototype.startInput = function() {
+    var ret = Window_Message.prototype.startInput.call(this);
+    if (ret) {
+        this._lastBattleEventPause = $gameSystem._LMBSBattleEventPauseGame;
+        $gameSystem._LMBSBattleEventPauseGame = true;
+    }
+    return ret;
+};
+
+Window_MessageLMBS.prototype.terminateMessage = function() {
+    Window_Message.prototype.terminateMessage.call(this);
+    if (!!this._lastBattleEventPause) {
+        $gameSystem._LMBSBattleEventPauseGame = this._lastBattleEventPause;
+        this._lastBattleEventPause = null;
+    }
+};
 //-----------------------------------------------------------------------------
 // Sprite_BattlerLMBS
 //
