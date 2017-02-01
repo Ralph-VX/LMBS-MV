@@ -789,12 +789,13 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "dur" : parseInt(RegExp.$1,10)
         });
     }
-    if(line.match(/Rotation (\d+)\,([+-]\d+)\,(\d+)/)){
+    if(line.match(/Rotation (\d+)\,([+-]?\d+)\,(\d+)(?:\,(\d+))?/)){
         list.push({
             "type" : "rotation",
-            "rotation" : parseInt(RegExp.$1,10),
+            "rotation" : parseInt(RegExp.$1,10) % 360,
             "dir" : parseInt(RegExp.$2,10),
             "dur" : parseInt(RegExp.$3,10),
+            "rounds" : !!RegExp.$3 ? parseInt(RegExp.$4,10) : 0
         });
     }
     if(line.match(/SetHitStop (\d+)/)) {
@@ -1074,6 +1075,8 @@ SceneManager.isNextScene = function(sceneClass) {
 //
 // The static class that manages battle progress.
 
+BattleManager._isEventRunning = false;
+
 BattleManager.displayStartMessages = function() {
     // Maybe use to display enemy, but not as a message.
 };
@@ -1123,6 +1126,14 @@ BattleManager.hasObstacle = function(subject, object){
     }
     return false;
 };
+
+BattleManager.isEventRunning = function() {
+    return this._isEventRunning;
+}
+
+BattleManager.isEventPausing = function() {
+    return this.isEventRunning() && $gameSystem._LMBSBattleEventPauseGame;
+}
 
 //-----------------------------------------------------------------------------
 // Game_Screen
@@ -1462,7 +1473,22 @@ DefaultMotionDescriptor.prototype.processMotion = function(obj) {
             this._processingMotionList.push(Object.create(obj));
             return true;
         case "rotation":
-            this._processingMotionList.push(Object.create(obj));
+            var nobj = Object.create(obj);
+            nobj.rotation = nobj.rotation % 360;
+            this._battler._rotation = this._battler._rotation % 360;
+            var dir = obj.dir > 0 ? 4 : 6;
+            if (dir == 4) {
+                while (this._battler._rotation <= nobj.rotation) {
+                    this._battler._rotation += 360;
+                }
+                nobj.rotation -= 360 * nobj.rounds;
+            } else if (dir == 6) {
+                while (this._battler._rotation >= nobj.rotation) {
+                    this._battler._rotation -= 360;
+                }
+                nobj.rotation += 360 * nobj.rounds;
+            }
+            this._processingMotionList.push(nobj);
             break;
         case "sethitstop":
             this._battler._hitStopLength = obj.length;
@@ -1543,16 +1569,8 @@ DefaultMotionDescriptor.prototype.processProcessingMotion = function(obj) {
             obj.dur--;
             break;
         case "rotation":
-            if (this._battler._rotation == obj.rotation) {
-                var dir = obj.dir > 0 ? (this._battler._facing ? 4 : 6) : (this._battler._facing ? 6 : 4);
-                if (dir == 6) {
-                    this._battler._rotation += 360;
-                } else {
-                    obj.rotation += 360;
-                }
-            }
-            var dr = this._battler._rotation - obj.rotation;
-            this._battler._rotation += (dir-5)*-1 * dr/obj.dur;
+            var dr = obj.rotation - this._battler._rotation;
+            this._battler._rotation += dr/obj.dur;
             obj.dur--;
             break;
         case "waitfall":
@@ -1690,7 +1708,7 @@ Game_Battler.prototype.isFloat = function(){
 
 
 Game_Battler.prototype.isGuard = function() {
-    return this.canMove() && this._guard;
+    return this._guard;
 };
 
 Game_Battler.prototype.isKnockback = function(){
@@ -2003,12 +2021,15 @@ Game_Battler.prototype.updateCollide = function() {
         });
         if (index != -1 ){
             var bat = members[index]._battleRect;
-            if (bat.x >= newrect.x){
+            if (bat.x == newrect.x) {
+                this.forceMoveWith(-2);
+                other.forceMoveWith(2);
+            } else if (bat.x >= newrect.x){
                 this.forceMoveWith(-4);
-                other.forceMoveWith(4);
+                //other.forceMoveWith(4);
             } else {
                 this.forceMoveWith(4);
-                other.forceMoveWith(-4);
+                //other.forceMoveWith(-4);
             }
             return;
         }
@@ -2016,16 +2037,19 @@ Game_Battler.prototype.updateCollide = function() {
     if(!Kien.LMBS_Core.moveThroughEnemy && !(Kien.LMBS_Core.dashThroughEnemy && this.isDashing())){
         members = this.opponentsUnit().members();
         var index = members.findIndex(function(obj) {
-            return obj.isOpaque() && newrect.overlap(obj._battleRect) && !(Kien.LMBS_Core.dashThroughEnemy && !obj.isDashing());
+            return obj.isOpaque() && newrect.overlap(obj._battleRect) && (!Kien.LMBS_Core.dashThroughEnemy || !obj.isDashing());
         });
         if (index != -1 ){
             var bat = members[index]._battleRect;
             var other = members[index];
-            if (bat.x >= newrect.x){
+            if (bat.x == newrect.x) {
+                this.forceMoveWith(-2);
+                other.forceMoveWith(2);
+            } else if (bat.x >= newrect.x){
                 this.forceMoveWith(-4);
-                other.forceMoveWith(4);
+                //other.forceMoveWith(4);
             } else {
-                other.forceMoveWith(-4);
+                //other.forceMoveWith(-4);
                 this.forceMoveWith(4);
             }
             return;
@@ -2190,10 +2214,10 @@ Game_Battler.prototype.dealDamage = function(target) {
     if(this._damageList.indexOf(target) == -1){
         this._actions[0].apply(target);
         var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
-        target.knockback(this._damageInfo.knockback, dir);
         target.startDamagePopup();
         if (this._actions[0].isDamage() || this._actions[0].isDrain()){
             target.endMotion();
+            target.knockback(this._damageInfo.knockback, dir);
         }
         BattleManager.refreshStatus();
         this._damageList.push(target);
@@ -2344,11 +2368,12 @@ Game_LMBSAiAttackMove.prototype.update = function() {
     if (!!this._target && !!this._battler && !this._finish) {
         var dist = this._distance;
         var newRect = this._battler._battleRect.clone();
-        newRect.x += newRect.width/2
-        newRect.width = dist;
         if (!this._battler._facing){
             newRect.x -= dist;
+        } else {
+            newRect.x += newRect.width
         }
+        newRect.width = dist;
         this._battler._debugRects.push(newRect);
         if (this._battler.opponentsUnit().members().findIndex(function(enemy){
             return enemy._battleRect.overlap(newRect);
@@ -2788,6 +2813,12 @@ Game_Actor.prototype.initMembers = function() {
     Kien.LMBS_Core.Game_Actor_initMembers.call(this);
     this._attackSets = {}; // Preloaded Attack Motion Sets. ["dir"] shows different direction.
     this._skillSets = {}; // Skills can performed with skill button. ["dir"] shows different direction.
+    this._inputData = {};
+    this._inputData.lastDir = 0;
+    this._inputData.lastDirPast = 0;
+    this._inputData.reservedInput = null;
+    this._inputData.reservedInputDir = 0;
+    this._inputData.jumpInputDur = 0;
 }
 
 Kien.LMBS_Core.Game_Actor_setup = Game_Actor.prototype.setup;
@@ -2944,10 +2975,96 @@ Game_Actor.prototype.update = function() {
         this._battleStart = false;
         return;
     }
-    if (!this.isDead() && ((this.isAiActing() && !this.isPlayerActor()) || this.isAiForcing())){
-        this.updateAi();
-    } else if (!this.isAiActing()) {
-        this.clearAiData();
+    if (!this.isDead()) {
+        if (this.isPlayerActor() && !this.isAiForcing()) {
+            this.updateInputGuard();
+            this.updateInputAttack();
+            this.updateInputSkill();
+            if (!this.isMotion() && !this.isGuard()) {
+                this.updateInputDash();
+                if(this._inputData.lastDir != 0){
+                    this._inputData.lastDirPast++;
+                    if (this._inputData.lastDirPast > Kien.LMBS_Core.doubleTapDur){
+                        this._inputData.lastDir = 0;
+                        this._inputData.lastDirPast = 0;
+                    }
+                }
+                this.updateInputJump();
+                this.updateInputMovement();
+            }
+        } else if (((this.isAiActing() && !this.isPlayerActor()) || this.isAiForcing())) {
+            this.updateAi();
+        } else if (!this.isAiActing()) {
+            this.clearAiData();
+        }
+    }
+}
+
+Game_Actor.prototype.updateInputGuard = function() {
+    if(Input.isPressed('LMBSguard') && !this.isMotion()){
+        this._guard = true;
+        this._guardDuration = 2;
+    }
+}
+
+Game_Actor.prototype.updateInputAttack = function() {
+    if(Input.isPressed('ok')){
+        this.useNormalAttack(Input.dir4);
+    }
+}
+
+Game_Actor.prototype.updateInputSkill = function() {
+    if(Input.isPressed('cancel')){
+        var d4 = Input.dir4;
+        if(d4 == 4){
+            d4 = (this._facing ? 4 : 6)
+        } else if (d4 == 6){
+            d4 = (this._facing ? 6 : 4)
+        }
+        this.useRegistedSkill(d4);
+    }
+}
+
+Game_Actor.prototype.updateInputMovement = function() {
+    if(this.isActable()){
+        if(Input.isPressed('left')){
+            this.moveWith(-(this.moveSpeed()));
+        } else if (Input.isPressed('right')){
+            this.moveWith(this.moveSpeed());
+        } else {
+            this._dash = false;
+        }
+    }
+}
+
+Game_Actor.prototype.updateInputJump = function() {
+    if(Input.isPressed('up') && this.isActable()){
+        this._inputData.jumpInputDur++;
+        if (this._inputData.jumpInputDur == Kien.LMBS_Core.inputDelay){
+            var dir = Input.isPressed('left') ? 4 : Input.isPressed('right') ? 6 : 0
+            this.jump(dir);   
+        }
+    } else {
+        this._inputData.jumpInputDur = 0;
+    }
+}
+
+Game_Actor.prototype.updateInputDash = function() {
+    if (Input.isTriggered('left')){
+        if(this._inputData.lastDir == 4){
+            this._dash = true
+        } else {
+            this._inputData.lastDir = 4;
+            this._inputData.lastDirPast = 0;
+        }
+    }
+    if (Input.isTriggered('right')){
+        if(this._inputData.lastDir == 6){
+            this._dash = true;
+        } else {
+            this._inputData.lastDir = 6;
+            this._inputData.lastDirPast = 0;
+        }
     }
 }
 
@@ -3703,11 +3820,11 @@ Game_Interpreter.prototype.command301 = function() {
     return true;
 }
 
-Game_interpreter.prototype.setEventPause = function(args) {
+Game_Interpreter.prototype.setEventPause = function(args) {
     if (args[0] == "true") {
         $gameSystem._LMBSBattleEventPauseGame = true;
     } else if (args[0] == "false") {
-        %gameSystem._LMBSBattleEventPauseGame = false;
+        $gameSystem._LMBSBattleEventPauseGame = false;
     }
 }
 
@@ -3923,6 +4040,44 @@ Window_BattleCommandLMBS.prototype.makeCommandList = function() {
 //     rect.width -= 32;
 //     return rect;
 // };
+
+//-----------------------------------------------------------------------------
+// Window_MessageLMBS
+//
+// The window for displaying text messages.
+
+function Window_MessageLMBS() {
+    this.initialize.apply(this, arguments);
+}
+
+Window_MessageLMBS.prototype = Object.create(Window_Message.prototype);
+Window_MessageLMBS.prototype.constructor = Window_MessageLMBS;
+
+Window_MessageLMBS.prototype.initialize = function() {
+    Window_Message.prototype.initialize.call(this);
+    this._lastBattleEventPause = false;
+    this._autoMessageSkippingDuration = 120;
+};
+
+Window_MessageLMBS.prototype.updateInput = function() {
+    if (!$gameSystem._LMBSBattleEventPauseGame) {
+        if (this.pause) {
+            if (this._autoMessageSkippingDuration <= 0) {
+                this.pause = false;
+                this._autoMessageSkippingDuration = 120;
+                if (!this._textState) {
+                    this.terminateMessage();
+                }
+            } else {
+                this._autoMessageSkippingDuration--;
+            }
+            return true;
+        }
+        return false;
+    } else {
+        return Window_Message.prototype.updateInput.call(this);
+    }
+};
 
 //-----------------------------------------------------------------------------
 // Sprite_BattlerLMBS
@@ -4233,6 +4388,9 @@ Sprite_BattlerLMBS.prototype.updatePosition = function() {
     }
     this._battler._battleRect = this.battlerBox();
     this.rotation = this._battler._rotation * Math.PI / 180;
+    if (this._battler._facing != Kien.LMBS_Core.defaultFacing) {
+        this.rotation = Math.PI * 2 - this.rotation;
+    }
 }
 
 Sprite_BattlerLMBS.prototype.battlerBox = function() {
@@ -5592,7 +5750,7 @@ Scene_BattleLMBS.prototype.createHelpWindow = function() {
 };
 
 Scene_BattleLMBS.prototype.createMessageWindow = function() {
-    this._messageWindow = new Window_Message();
+    this._messageWindow = new Window_MessageLMBS();
     this._messageWindow.deactivate();
     this._messageWindow._goldWindow.deactivate();
     this.addWindow(this._messageWindow);
@@ -5682,7 +5840,7 @@ Scene_BattleLMBS.prototype.createEnemyWindow = function() {
 
 Scene_BattleLMBS.prototype.createRewardSprite = function() {
     this._rewardSprite = new Sprite_BattleRewardLMBS();
-    this.addChild(this._rewardSprite);
+    this._spriteset.addChild(this._rewardSprite);
 }
 
 Scene_BattleLMBS.prototype.start = function() {
@@ -5703,18 +5861,23 @@ Scene_BattleLMBS.prototype.update = function() {
         this._testSprite.scale = this._spriteset.scale;
     }
     Scene_Base.prototype.update.call(this);
-    this.updateMain();
-    this.updateCamera();
     if(this._battleEnd){
         this.updateBattleEnd();
     } else {
-        if(!BattleManager.updateEvent()){
-            this.updateInput();
-        } else if (BattleManager.isBattleEnd()) {
-            this.startBattleEnd();
+        if(BattleManager.updateEvent()){
+            BattleManager._isEventRunning = true;
+            if (BattleManager.isBattleEnd()) {
+                this.startBattleEnd();
+            }
+        } else {
+            BattleManager._isEventRunning = false;
         }
         this.updateTurn();
     }
+    this.updateInput();
+    this.updateMain();
+    this.updateCamera();
+    this.updateInput();
 }
 
 Scene_BattleLMBS.prototype.updateCamera = function() {
@@ -5751,98 +5914,13 @@ Scene_BattleLMBS.prototype.activeActor = function() {
 }
 
 Scene_BattleLMBS.prototype.updateInput = function() {
-    if ((BattleManager._actorIndex >= 0 && !this.activeActor()._aiData.forceAi) && this.isMovable()) {
-        this.updateInputMenu();
-        this.updateInputGuard();
-        this.updateInputAttack();
-        this.updateInputSkill();
-        if(!this.activeActor().isMotion()){
-            this.updateInputDash();
-            if(this._inputData.lastDir != 0){
-                this._inputData.lastDirPast++;
-                if (this._inputData.lastDirPast > Kien.LMBS_Core.doubleTapDur){
-                    this._inputData.lastDir = 0;
-                    this._inputData.lastDirPast = 0;
-                }
-            }
-            this.updateInputJump();
-            this.updateInputMovement();
-        }
-    }
+    this.updateInputMenu();
 }
 
 Scene_BattleLMBS.prototype.updateInputMenu = function() {
     if (Input.isTriggered('shift')){
         this._menuWindow.open();
         this._menuWindow.activate();
-    }
-}
-
-Scene_BattleLMBS.prototype.updateInputGuard = function() {
-    if(Input.isTriggered('LMBSguard')){
-        this.activeActor()._guard = true;
-        this.activeActor()._guardDuration = 1;
-    }
-}
-
-Scene_BattleLMBS.prototype.updateInputAttack = function() {
-    if(Input.isTriggered('ok')){
-        this.activeActor().useNormalAttack(Input.dir4);
-    }
-}
-
-Scene_BattleLMBS.prototype.updateInputSkill = function() {
-    if(Input.isTriggered('cancel')){
-        var d4 = Input.dir4;
-        if(d4 == 4){
-            d4 = (this.activeActor()._facing ? 4 : 6)
-        } else if (d4 == 6){
-            d4 = (this.activeActor()._facing ? 6 : 4)
-        }
-        this.activeActor().useRegistedSkill(d4);
-    }
-}
-
-Scene_BattleLMBS.prototype.updateInputMovement = function() {
-    if(this.activeActor().isActable()){
-        if(Input.isPressed('left')){
-            this.activeActor().moveWith(-(this.activeActor().moveSpeed()));
-        } else if (Input.isPressed('right')){
-            this.activeActor().moveWith(this.activeActor().moveSpeed());
-        } else {
-            this.activeActor()._dash = false;
-        }
-    }
-}
-
-Scene_BattleLMBS.prototype.updateInputJump = function() {
-    if(Input.isPressed('up') && this.activeActor().isActable()){
-        this._inputData.jumpInputDur++;
-        if (this._inputData.jumpInputDur == Kien.LMBS_Core.inputDelay){
-            var dir = Input.isPressed('left') ? 4 : Input.isPressed('right') ? 6 : 0
-            this.activeActor().jump(dir);   
-        }
-    } else {
-        this._inputData.jumpInputDur = 0;
-    }
-}
-
-Scene_BattleLMBS.prototype.updateInputDash = function() {
-    if (Input.isTriggered('left')){
-        if(this._inputData.lastDir == 4){
-            this.activeActor()._dash = true
-        } else {
-            this._inputData.lastDir = 4;
-            this._inputData.lastDirPast = 0;
-        }
-    }
-    if (Input.isTriggered('right')){
-        if(this._inputData.lastDir == 6){
-            this.activeActor()._dash = true
-        } else {
-            this._inputData.lastDir = 6;
-            this._inputData.lastDirPast = 0;
-        }
     }
 }
 
@@ -5856,9 +5934,10 @@ Scene_BattleLMBS.prototype.isBattlePaused = function() {
 }
 
 Scene_BattleLMBS.prototype.isAnyInputWindowActive = function() {
-    return (this._windowLayer && (this._windowLayer.children.filter(function(window) {
-        return window.active;
-    }).length > 0)) || (this._messageWindow && this._messageWindow.isOpen());
+
+    return (this._windowLayer && (this._windowLayer.children.filter(function(w) {
+        return w.active;
+    }.bind(this)).length > 0)) || (this._messageWindow && (this._messageWindow.isOpen() && $gameSystem._LMBSBattleEventPauseGame));
 };
 
 Scene_BattleLMBS.prototype.startBattleEnd = function() {
