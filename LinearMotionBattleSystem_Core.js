@@ -795,7 +795,7 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "rotation" : parseInt(RegExp.$1,10) % 360,
             "dir" : parseInt(RegExp.$2,10),
             "dur" : parseInt(RegExp.$3,10),
-            "rounds" : !!RegExp.$3 ? parseInt(RegExp.$4,10) : 0
+            "rounds" : !!RegExp.$4 ? parseInt(RegExp.$4,10) : 0
         });
     }
     if(line.match(/SetHitStop (\d+)/)) {
@@ -833,6 +833,28 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "type" : "changeweapon",
             "name" : RegExp.$1
         });
+    }
+    if (line.match(/MoveWeapon (\d+)\,(\d+),(\d+)/)) {
+        list.push({
+            "type" : "moveweapon",
+            "dx" : parseInt(RegExp.$1),
+            "dy" : parseInt(RegExp.$2),
+            "dur": parseInt(RegExp.$3)
+        })
+    }
+    if (line.match(/RotateWeapon (\d+),(\d+),(\d+)(?:\,(\d+))?/)) {
+        list.push({
+            "type" : "rotateweapon",
+            "rotation" : parseInt(RegExp.$1,10) % 360,
+            "dir" : parseInt(RegExp.$2,10),
+            "dur" : parseInt(RegExp.$3,10),
+            "rounds" : !!RegExp.$4 ? parseInt(RegExp.$4,10) : 0
+        })
+    }
+    if (line.match(/ResetWeapon/)) {
+        list.push({
+            "type" : "resetweapon"
+        })
     }
     Kien.LMBS_Core.loadExtraLine(line,cur);
 }
@@ -1525,6 +1547,31 @@ DefaultMotionDescriptor.prototype.processMotion = function(obj) {
         case "changeweapon":
             this._battler._weaponName = obj.name;
             break;
+        case "moveweapon" :
+            this._processingMotionList.push(obj);
+            break;
+        case "rotateweapon":
+            var nobj = Object.create(obj);
+            nobj.rotation = nobj.rotation % 360;
+            this._battler._weaponProperty.rotation = this._battler._weaponProperty.rotation % 360;
+            var dir = obj.dir > 0 ? 4 : 6;
+            if (dir == 4) {
+                while (this._battler._weaponProperty.rotation <= nobj.rotation) {
+                    this._battler._weaponProperty.rotation += 360;
+                }
+                nobj.rotation -= 360 * nobj.rounds;
+            } else if (dir == 6) {
+                while (this._battler._weaponProperty.rotation >= nobj.rotation) {
+                    this._battler._weaponProperty.rotation -= 360;
+                }
+                nobj.rotation += 360 * nobj.rounds;
+            }
+            this._battler._weaponProperty.overrideRotation = true;
+            this._processingMotionList.push(nobj);
+            break;
+        case "resetweapon":
+            this._battler.clearWeaponProperty();
+            break;
     }
     return false;
 }
@@ -1583,6 +1630,20 @@ DefaultMotionDescriptor.prototype.processProcessingMotion = function(obj) {
             if(obj.dur == 0){
                 this._battler._patternIndex = 0;
             }
+            break;
+        case "moveweapon":
+            var ddx = obj.dx / obj.dur;
+            var ddy = obj.dy / obj.dur;
+            this._battler._weaponProperty.dx += ddx;
+            this._battler._weaponProperty.dy += ddy;
+            obj.dx -= ddx;
+            obj.dy -= ddy;
+            obj.dur--;
+            break;
+        case "rotateweapon":
+            var dr = obj.rotation - this._battler._weaponProperty.rotation;
+            this._battler._rotation += dr / obj.dur;
+            obj.dur--;
             break;
     }
 }
@@ -2127,11 +2188,21 @@ Game_Battler.prototype.endMotion = function() {
     this._patternIndex = -1;
     this._pose = "Stand";
     this._weaponName = null;
+    this.clearWeaponProperty();
     this._waitInput = false; // accepting input.
     this._motionFall = true;
     this._rotation = 0;
     this._hitStopLength = 15;
     this.clearDamage();
+}
+
+Game_Battler.prototype.clearWeaponProperty = function() {
+    this._weaponProperty = {
+        "dx" : 0,
+        "dy" : 0,
+        "rotation" : 0,
+        "overrideRotation" : false
+    }
 }
 
 Game_Battler.prototype.clearDamage = function() {
@@ -4057,7 +4128,35 @@ Window_MessageLMBS.prototype.initialize = function() {
     Window_Message.prototype.initialize.call(this);
     this._lastBattleEventPause = null;
     this._autoMessageSkippingDuration = 120;
+    this._isInputStarted = false;
 };
+
+Window_MessageLMBS.prototype.update = function() {
+    this.checkToNotClose();
+    Window_Base.prototype.update.call(this);
+    while (!this.isOpening() && !this.isClosing()) {
+        if (this.updateWait()) {
+            return;
+        } else if (this._isInputStarted){
+            this._startInput.call(this);
+            this._isInputStarted = false;
+            return;
+        } else if (this.updateLoading()) {
+            return;
+        } else if (this.updateInput()) {
+            return;
+        } else if (this.updateMessage()) {
+            return;
+        } else if (this.canStart()) {
+            this.startMessage();
+        } else {
+            this.startInput();
+            return;
+        }
+    }
+};
+
+Window_MessageLMBS.prototype._startInput = Window_Message.prototype.startInput;
 
 Window_MessageLMBS.prototype.updateInput = function() {
     if (!$gameSystem._LMBSBattleEventPauseGame) {
@@ -4080,10 +4179,21 @@ Window_MessageLMBS.prototype.updateInput = function() {
 };
 
 Window_MessageLMBS.prototype.startInput = function() {
-    var ret = Window_Message.prototype.startInput.call(this);
+    var ret = false;
+    if ($gameMessage.isChoice()) {
+        ret = true;
+    } else if ($gameMessage.isNumberInput()) {
+        ret = true;
+    } else if ($gameMessage.isItemChoice()) {
+        ret = true;
+    } else {
+        ret = false;
+    }
     if (ret) {
         this._lastBattleEventPause = $gameSystem._LMBSBattleEventPauseGame;
         $gameSystem._LMBSBattleEventPauseGame = true;
+        this._isInputStarted = true;
+        this.startWait(30);
     }
     return ret;
 };
@@ -4495,8 +4605,13 @@ Sprite_BattlerLMBS.prototype.updateWeaponSprite = function() {
     }
     this._weaponParentSprite.x = this.getCurrentWeaponX() ? this.getCurrentWeaponX() : 0;
     this._weaponParentSprite.y = this.getCurrentWeaponY() ? this.getCurrentWeaponY() : 0;
+    this._weaponParentSprite.x += this._battler._weaponProperty.dx;
+    this._weaponParentSprite.y += this._battler._weaponProperty.dy;
     this._weaponSprite._hide = this.getCurrentWeaponHide();
     this._weaponSprite._angle = this.getCurrentWeaponAngle() ? this.getCurrentWeaponAngle() : 0;
+    if (this._battler._weaponProperty.overrideRotation) {
+        this._weaponSprite._angle = this._battler._weaponProperty.rotation;
+    }
     this._weaponParentSprite.scale.x = this.getCurrentWeaponMirror() ? -1 : 1;
     this._weaponSprite.update();
 }
