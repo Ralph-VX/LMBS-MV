@@ -1294,10 +1294,11 @@ function AbstractMotionDescriptor() {
     this.initialize.apply(this, arguments);
 }
 
-AbstractMotionDescriptor.prototype.initialize = function(battler) {
+AbstractMotionDescriptor.prototype.initialize = function(battler, item) {
     this._battler = battler;
     this._finish = false;
     this._waitCount = 0;
+    this._item = item;
 }
 
 AbstractMotionDescriptor.prototype.isWait = function() {
@@ -1366,11 +1367,11 @@ function DefaultMotionDescriptor() {
 DefaultMotionDescriptor.prototype = Object.create(AbstractMotionDescriptor.prototype);
 DefaultMotionDescriptor.prototype.constructor = DefaultMotionDescriptor;
 
-DefaultMotionDescriptor.prototype.initialize = function (battler) {
+DefaultMotionDescriptor.prototype.initialize = function (battler, item) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
     this._stoppedAi = false;
     this._childDescriptor = null;
-    var item = this._battler._actions[0]._item.object();
+    var item = this._item;
     if (!this._battler.isGround()) {
         var id = parseInt(item.meta["Aerial Cast"],10);
         if (id > 0) {
@@ -1452,7 +1453,9 @@ DefaultMotionDescriptor.prototype.processMotion = function(obj) {
             this._battler.clearDamage();
             break;
         case "projectile":
-            this._battler.registProjectile(Object.create(obj));
+            var nobj = Object.create(obj);
+            nobj.item = this._item;
+            this._battler.registProjectile(nobj);
             break;
         case "letfall":
             this._battler._motionFall = true;
@@ -1538,7 +1541,7 @@ DefaultMotionDescriptor.prototype.processMotion = function(obj) {
             var b = a._target;
             var v = $gameVariables._data;
             if (eval(obj.expression)){
-                this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, obj.list);
+                this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, obj.list);
             }
             break;
         case "endif":
@@ -1673,7 +1676,7 @@ function ChildDefaultMotionDescriptor() {
 ChildDefaultMotionDescriptor.prototype = Object.create(DefaultMotionDescriptor.prototype);
 ChildDefaultMotionDescriptor.prototype.constructor = ChildDefaultMotionDescriptor;
 
-ChildDefaultMotionDescriptor.prototype.initialize = function (battler, list) {
+ChildDefaultMotionDescriptor.prototype.initialize = function (battler, item, list) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
     this._stoppedAi = false;
     this._processingMotionList = [];
@@ -1734,9 +1737,17 @@ Game_Battler.prototype.initMembers = function(){
     this._forceWaitCount = 0; // count for hit-stop.
     this._hitStopLength = 15; // Length of hit-stop.
     this._knockbacking = false; // Is knockback or not
-    ; // Weapon name specified by skill motion.
+    this.clearChainCount();
 };
 
+Kien.LMBS_Core.Game_Battler_xparam = Game_Battler.prototype.xparam;
+Game_Battler.prototype.xparam = function(xparamId) {
+    var val = Kien.LMBS_Core.Game_Battler_xparam.call(this, xparamId);
+    if (xparamId == 1 && this.isKnockback()) {
+        return val / 2;
+    }
+    return val;
+}
 
 Game_Battler.prototype.update = function(){
     this._debugRects.clear();
@@ -1754,6 +1765,7 @@ Game_Battler.prototype.update = function(){
     this.updateJump();
     this.updateCollide();
     this.updateMoving();
+    this.updateChainCount();
 };
 
 Game_Battler.prototype.isGround = function(){
@@ -1940,6 +1952,7 @@ Game_Battler.prototype.knockback = function(knockback, knockdir){
         this._knockback.y = 0;
         this._knockdir = 0;
         this._knockbacking = false;
+        this.clearChainCount();
     }
 }
 
@@ -1960,6 +1973,9 @@ Game_Battler.prototype.updateKnockback = function() {
         }
         if (this.isGround()) {
             this._knockbacking = false;
+            console.log(this._hitCount);
+            console.log(this._chainCount);
+            this.clearChainCount();
         }
     }
 }
@@ -2059,6 +2075,10 @@ Game_Battler.prototype.moveSpeed = function() {
     return this._moveSpeed * (this._dash ? 2 : 1);
 }
 
+Game_Battler.prototype.motionSkillId = function() {
+    return this.isMotion() ? this._skillMotionDescriptor._item.id : 0;
+}
+
 Game_Battler.prototype.updateJump = function() {
     if(this.isJumping() && !this.isForceWaiting()){
         this._battleY += Math.round(Kien.LMBS_Core.jumpPower * Math.pow(4/5,15-this._jumpData.dur));
@@ -2154,11 +2174,28 @@ Game_Battler.prototype.updatePose = function() {
     this._pose = "Stand";
 }
 
+Game_Battler.prototype.updateChainCount = function() {
+    var removed = [];
+    var keys = this._lastSkillHit.keys();
+    for (var i = 0; i < keys.length; i++) {
+        var obj = keys[i];
+        if (!obj.isMotion()) {
+            this._lastSkillHit.remove(obj);
+        }
+    }
+}
+
 Kien.LMBS_Core.Game_Battlre_clearMotion = Game_Battler.prototype.clearMotion;
 Game_Battler.prototype.clearMotion = function() {
 	Kien.LMBS_Core.Game_Battlre_clearMotion.call(this);
 	this._pose = "Stand";
 };
+
+Game_Battler.prototype.clearChainCount = function() {
+    this._hitCount = 0;
+    this._chainCount = 0;
+    this._lastSkillHit = new Kien.HashMap();
+}
 
 Kien.LMBS_Core.Game_Battler_onBattleEnd = Game_Battler.prototype.onBattleEnd;
 Game_Battler.prototype.onBattleEnd = function() {
@@ -2166,6 +2203,8 @@ Game_Battler.prototype.onBattleEnd = function() {
     this._battleRect = null;
     this._battleStart = false;
     this._forcePose = null;
+    this.endMotion();
+    this.clearChainCount();
 };
 
 Kien.LMBS_Core.Game_Battler_onBattleStart = Game_Battler.prototype.onBattleStart;
@@ -2174,6 +2213,7 @@ Game_Battler.prototype.onBattleStart = function() {
     this._battleStart = true;
     this._forcePose = null;
     this.initBattlePosition();
+    this.clearChainCount();
 };
 
 Game_Battler.prototype.initBattlePosition = function() {
@@ -2194,6 +2234,7 @@ Game_Battler.prototype.endMotion = function() {
     this._rotation = 0;
     this._hitStopLength = 15;
     this.clearDamage();
+    this.clearActions();
 }
 
 Game_Battler.prototype.clearWeaponProperty = function() {
@@ -2220,16 +2261,16 @@ Game_Battler.prototype.clearDamage = function() {
 }
 
 Game_Battler.prototype.loadMotionFromObject = function(obj) {
-    this.endMotion();
     var klass = Kien.LMBS_Core.loadMotionDescriptorClass(obj);
     if (klass) {
-        this._skillMotionDescriptor = new klass(this);
+        this._skillMotionDescriptor = new klass(this, obj);
     }
 }
 
 Game_Battler.prototype.useSkill = function(skillId){
     var skill = $dataSkills[skillId];
     if (skill && this.canUseLMBS(skill)){
+        this.endMotion();
         var action = new Game_Action(this);
         action.setSkill(skillId);
         this.setAction(0,action);
@@ -2242,6 +2283,7 @@ Game_Battler.prototype.useSkill = function(skillId){
 Game_Battler.prototype.forceSkill = function(skillId){
     var skill = $dataSkills[skillId];
     if (skill){
+        this.endMotion();
         var action = new Game_Action(this);
         action.setSkill(skillId);
         this.setAction(0,action);
@@ -2253,6 +2295,7 @@ Game_Battler.prototype.forceSkill = function(skillId){
 Game_Battler.prototype.useItemLMBS = function(itemId){
     var item = $dataItems[itemId];
     if (item && this.canUseLMBS(item)){
+        this.endMotion();
         var action = new Game_Action(this);
         action.setItem(itemId);
         this.setAction(0,action);
@@ -2264,6 +2307,7 @@ Game_Battler.prototype.useItemLMBS = function(itemId){
 Game_Battler.prototype.forceItemLMBS = function(itemId){
     var item = $dataItems[itemId];
     if (item){
+        this.endMotion();
         var action = new Game_Action(this);
         action.setItem(itemId);
         this.setAction(0,action);
@@ -2272,7 +2316,7 @@ Game_Battler.prototype.forceItemLMBS = function(itemId){
     }
 }
 
-Game_BattlerBase.prototype.canUseLMBS = function(obj) {
+Game_Battler.prototype.canUseLMBS = function(obj) {
     var klass = Kien.LMBS_Core.loadMotionDescriptorClass(obj);
     if (klass) {
         return klass.prototype.canUse(this, obj);
@@ -2289,6 +2333,7 @@ Game_Battler.prototype.dealDamage = function(target) {
         if (this._actions[0].isDamage() || this._actions[0].isDrain()){
             target.endMotion();
             target.knockback(this._damageInfo.knockback, dir);
+            target.onHitted(this);
         }
         BattleManager.refreshStatus();
         this._damageList.push(target);
@@ -2300,12 +2345,23 @@ Game_Battler.prototype.dealDamage = function(target) {
 Game_Battler.prototype.forceDamage = function(target) {
     this._actions[0].apply(target);
     var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
-    target.knockback(this._damageInfo.knockback, dir);
     target.startDamagePopup();
     if (this._actions[0].isDamage() || this._actions[0].isDrain()){
         target.endMotion();
+        target.knockback(this._damageInfo.knockback, dir);
+        target.onHitted(this);
     }
     BattleManager.refreshStatus();
+}
+
+Game_Battler.prototype.onHitted = function(user) {
+    if (this._knockbacking) {
+        if (!this._lastSkillHit.get(user) || user.motionSkillId() != this._lastSkillHit.get(user)) {
+            this._lastSkillHit.put(user,user.motionSkillId());
+            this._chainCount++;
+        }
+        this._hitCount++;
+    }
 }
 
 Game_Battler.prototype.getWeaponName = function() {
@@ -3365,6 +3421,7 @@ Game_Actor.prototype.useRegistedSkill = function(dir) {
 
 Game_Actor.prototype.performVictorySkill = function() {
     if (this._victorySkillId >= 0){
+        this.endMotion();
         var action = new Game_Action(this);
         action.setSkill(this._victorySkillId);
         this.setAction(0,action);
@@ -4546,7 +4603,7 @@ Sprite_BattlerLMBS.prototype.updateProjectile = function() {
         if (eval(obj.classname) === undefined) {
             continue;
         }
-        var sprite = new (eval(obj.classname))(obj.parameters, this);
+        var sprite = new (eval(obj.classname))(obj, this);
         var updateFunc = sprite.update;
         var newUpdateFunc = function() {
             if (!SceneManager._scene.isBattlePaused()){
@@ -4935,8 +4992,9 @@ function Sprite_ProjectileLMBS() {
 Sprite_ProjectileLMBS.prototype = Object.create(Sprite_Base.prototype);
 Sprite_ProjectileLMBS.prototype.constructor = Sprite_ProjectileLMBS;
 
-Sprite_ProjectileLMBS.prototype.initialize = function(parameters, sprite){
+Sprite_ProjectileLMBS.prototype.initialize = function(object, sprite){
     Sprite_Base.prototype.initialize.call(this);
+    var parameters = object.parameters;
     if(parameters.match(/(.+)\,(\d+)\,(\d+)\,([+-]?\d+)\,([+-]?\d+)\,(\d+(?:\.\d+)?)\,(\d+)\,(\d+)\,(\d+)/)){
         var filename = RegExp.$1;
         var framenumber = parseInt(RegExp.$2);
@@ -4973,7 +5031,7 @@ Sprite_ProjectileLMBS.prototype.initialize = function(parameters, sprite){
     this._direction = (this._battler._facing ? 1 : -1);
     this.scale.x = this._direction * (Kien.LMBS_Core.defaultFacing ? 1 : -1);
     this._action = new Game_Action(this._battler);
-    this._action.setSkill(this._battler._actions[0].item().id);
+    this._action.setItemObject(object.item);
     this._action._damagePercentage = this._damagePer;
 }
 
@@ -5071,8 +5129,9 @@ function Sprite_AnimationLMBS() {
 Sprite_AnimationLMBS.prototype = Object.create(Sprite_Animation.prototype);
 Sprite_AnimationLMBS.prototype.constructor = Sprite_AnimationLMBS;
 
-Sprite_AnimationLMBS.prototype.initialize = function(parameters, sprite){
+Sprite_AnimationLMBS.prototype.initialize = function(object, sprite){
     Sprite_Animation.prototype.initialize.call(this);
+    var parameters = object.parameters;
     //                    origin,    dx,         dy,    jsoname   id,  delay,      mirror,          follow
     if (parameters.match(/(.+?)\,([+-]?\d+)\,([+-]?\d+)\,(.+?)\,(\d+)\,(\d+)\,(true|false|null)\,(true|false)/)){
         var origin = RegExp.$1;
@@ -5104,7 +5163,7 @@ Sprite_AnimationLMBS.prototype.initialize = function(parameters, sprite){
         "height" : this._targetSprite.height
     }
     this._action = new Game_Action(this._battler);
-    this._action.setSkill(this._battler._actions[0].item().id);
+    this._action.setItemObject(object.item);
     if (this._mirror === null) {
         this._mirror = !this._battler._facing;
     }
@@ -5477,6 +5536,63 @@ Sprite_EscapeGauge.prototype.initialize = function() {
 
 Sprite_EscapeGauge.prototype.createBitmap = function() {
     this.bitmap = new Bitmap(Graphics.width, 30);
+}
+
+//-----------------------------------------------------------------------------
+// Sprite_HitCount
+//
+// The sprite for displaying score.
+
+function Sprite_HitCount() {
+    this.initialize.apply(this, arguments);
+}
+
+Sprite_HitCount.prototype = Object.create(Sprite_Base.prototype);
+Sprite_HitCount.prototype.constructor = Sprite_HitCount;
+
+Sprite_HitCount.HIT_COUNT_FONT_SIZE = 48;
+Sprite_HitCount.HIT_FONT_SIZE = 36;
+Sprite_HitCount.CHAIN_FONT_SIZE = 28;
+
+Sprite_HitCount.prototype.initialize = function() {
+    Sprite_Base.prototype.initialize.call(this);
+    this._lastHitCount = 0;
+    this._lastChainCount = 0;
+    this.createSprites();
+}
+
+Sprite_HitCount.prototype.createSprites = function() {
+    this._hitCountSprite = new Sprite();
+    this._hitCountSprite.bitmap = new Bitmap(Sprite_HitCount.HIT_COUNT_FONT_SIZE * 4 + 4, Sprite_HitCount.HIT_COUNT_FONT_SIZE + 4);
+    this._hitCountSprite.bitmap.fontSize = Sprite_HitCount.HIT_COUNT_FONT_SIZE;
+    this._hitSprite = new Sprite();
+    this._hitSprite.y = Sprite_HitCount.HIT_COUNT_FONT_SIZE - Sprite_HitCount.HIT_FONT_SIZE;
+    this._hitSprite.bitmap = new Bitmap(this._hitCountSprite.bitmap.width, Sprite_HitCount.HIT_FONT_SIZE + 4);
+    this._hitSprite.bitmap.fontSize = Sprite_HitCount.HIT_FONT_SIZE;
+    this._hitSprite.bitmap.fontItalic = true;
+    this._hitSprite.bitmap.drawText("HIT",0,0,this._hitSprite.bitmap.width,this._hitSprite.bitmap.height,"right");
+    this._chainCountSprite = new Sprite();
+    this._chainCountSprite.y = Math.max(this._hitCountSprite.bitmap.height, this._hitSprite.bitmap.height);
+    this._chainCountSprite.bitmap = new Bitmap(Sprite_HitCount.CHAIN_FONT_SIZE * 4 + 4, Sprite_HitCount.CHAIN_FONT_SIZE + 4);
+    this._chainSprite = new Sprite();
+    this._chainSprite.y = this._chainCountSprite.y;
+    this._chainSprite.bitmap = new Bitmap(this._chainCountSprite.bitmap.width, this._chainCountSprite.height);
+    this._chainSprite.bitmap.fontItalic = true;
+    this._chainSprite.bitmap.drawText("Chain",0,0,this._chainSprite.width, this._chainSprite.height);
+    this.addChild(this._hitSprite);
+    this.addChild(this._hitCountSprite);
+    this.addChild(this._chainSprite);
+    this.addChild(this._chainCountSprite);
+}
+
+Sprite_HitCount.prototype.update = function() {
+    Sprite_Base.prototype.update.call(this);
+}
+
+Sprite_HitCount.prototype.updateBitmap = function() {
+}
+
+Sprite_HitCount.prototype.updateEffect = function() {
 }
 
 //-----------------------------------------------------------------------------
