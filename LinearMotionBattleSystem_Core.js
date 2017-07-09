@@ -27,7 +27,7 @@ Kien.LMBS_Core = {};
  *
  * @param Maximum Fall Speed
  * @desc the maximum distance characters falls each frame.
- * @default 6 
+ * @default 10
  *
  * @param Animation Speed
  * @desc The amount of frames an picture will show in character loop animation.
@@ -48,7 +48,7 @@ Kien.LMBS_Core = {};
  *
  * @param Jump Power
  * @desc Force of jump that characters will take. Affect height of jump.
- * @default 30
+ * @default 20
  *
  * @param Enemy X Start
  * @desc Starting coordinate of enemy troop. This value will add to coordinate
@@ -146,25 +146,30 @@ Kien.LMBS_Core = {};
  * @desc Icon index of the 'Item' in battle Menu
  * @default 176
  *
+ * @param Battle Message Window Color
+ * @desc Set the window color of skill name window. Atleast need 2 brackets for
+ * Player/Enemy's Window.
+ * @default (-68,102,255),(153,-53,-204)
+ *
  * @param ===Camera Settings===
  * @desc 
  * @default 
  *
  * @param Max Camera Zoom
  * @desc Maximum maginification camera can be. Prevent the zoom becomes too big.
- * @default 1.25
+ * @default 2
  *
  * @param Min Camera Zoom
  * @desc Minimum maginification camera can be. Prevent the zoom becomes too small.
- * @default 0.90
+ * @default 0.7
  *
  * @param Camera Left Margin
  * @desc Amount of pixels camera will leave from the left-most of characters
- * @default 30
+ * @default 100
  *
  * @param Camera Right Margin
  * @desc Amount of pixels camera will leave from the right-most of characters
- * @default 30
+ * @default 100
  *
  * @help
  * ============================================================================
@@ -401,8 +406,38 @@ Kien.LMBS_Core.battleEndWaitTime = parseInt(Kien.LMBS_Core.parameters["Battle En
 Kien.LMBS_Core.autoGuardDuration = parseInt(Kien.LMBS_Core.parameters["Auto Guard Time After Guard"]);
 Kien.LMBS_Core.enableDefault = eval(Kien.LMBS_Core.parameters["Enable Default"]);
 
+Kien.LMBS_Core.battleTopMessageWindowColors = (function(param) {
+    var ret = [];
+    var reg = /\(([+-]?\d+)\,([+-]?\d+)\,([+-]?\d+)\)/g;
+    var execret;
+    while ((execret = reg.exec(param)) != null) {
+        ret.push({
+            "r" : parseInt(execret[1]),
+            "g" : parseInt(execret[2]),
+            "b" : parseInt(execret[3])
+        });
+    }
+    if (ret.length == 0) {
+        ret.push({
+            "r" : -68,
+            "g" : 102,
+            "b" : 255
+        })
+    }
+    if (ret.length == 1) {
+        ret.push({
+            "r" : 153,
+            "g" : -53,
+            "b" : -204
+        })
+    }
+    return ret;
+})(Kien.LMBS_Core.parameters["Battle Message Window Color"]);
 
 
+if (!Imported.Kien_Lib) {
+    throw new Error("Library Plugin Not Found.\n Please put KienLib.js above this plugin.");
+}
 
 
 // From https://github.com/buzzfeed/libgif-js/blob/master/libgif.js
@@ -856,6 +891,24 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "type" : "resetweapon"
         })
     }
+    if (line.match(/ShowSkillName/)) {
+        list.push({
+            "type" : "showskillname"
+        })
+    }
+    if (line.match(/ShowMessage (\d+)\,(.+)/)) {
+        list.push({
+            "type" : "showmessage",
+            "channel" : parseInt(RegExp.$1, 10),
+            "string" : RegExp.$2
+        })
+    }
+    if (line.match(/HideMessage (\d+)/)) {
+        list.push({
+            "type" : "hidemessage",
+            "channel" : parseInt(RegExp.$1, 10)
+        })
+    }
     Kien.LMBS_Core.loadExtraLine(line,cur);
 }
 
@@ -1062,6 +1115,7 @@ if (!Math.rad2Deg) {
  * @property keyMapper
  * @type Object
  */
+ 
 Input.keyMapper[67] = 'LMBSguard';
 
 DataManager._databaseFiles.push({ name: '$dataLMBSCharacters',       src: 'characterList.json'       });
@@ -1155,6 +1209,37 @@ BattleManager.isEventRunning = function() {
 
 BattleManager.isEventPausing = function() {
     return this.isEventRunning() && $gameSystem._LMBSBattleEventPauseGame;
+}
+
+//-----------------------------------------------------------------------------
+// Game_Temp
+//
+// The game object class for temporary data that is not included in save data.
+
+Kien.LMBS_Core.Game_Temp_initialize = Game_Temp.prototype.initialize;
+Game_Temp.prototype.initialize = function() {
+    Kien.LMBS_Core.Game_Temp_initialize.call(this);
+    this._inBattleTopMessage = [];
+};
+
+Game_Temp.prototype.clearBattleMessage = function() {
+    this._inBattleTopMessage = [];
+}
+
+Game_Temp.prototype.setBattleMessage = function(channel, string) {
+    this._inBattleTopMessage[channel] = string;
+}
+
+Game_Temp.prototype.removeBattleMessage = function(channel) {
+    this._inBattleTopMessage[channel] = undefined;
+}
+
+Game_Temp.prototype.getBattleMessage = function(channel) {
+    return this._inBattleTopMessage[channel];
+}
+
+Game_Temp.prototype.getBattleMessageLength = function() {
+    return this._inBattleTopMessage.length;
 }
 
 //-----------------------------------------------------------------------------
@@ -1371,6 +1456,7 @@ DefaultMotionDescriptor.prototype.initialize = function (battler, item) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
     this._stoppedAi = false;
     this._childDescriptor = null;
+    this._showingMessage = [];
     var item = this._item;
     if (!this._battler.isGround()) {
         var id = parseInt(item.meta["Aerial Cast"],10);
@@ -1418,163 +1504,228 @@ DefaultMotionDescriptor.prototype.update = function(){
     }
 }
 
+DefaultMotionDescriptor.prototype.processMotionCommandpose = function(obj) {
+    this._battler._pose = obj.name;
+    this._battler._patternIndex = 0;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandforward = function(obj) {
+    this._battler._patternIndex++;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandbackward = function(obj) {
+    if (this._battler._patternIndex > 0){
+        this._battler._patternIndex--;
+    }
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandmove = function(obj) {
+    this._processingMotionList.push(Object.create(obj));
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandwait = function(obj) {
+    this._processingMotionList.push(Object.create(obj));
+    return true;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandstartinput = function(obj) {
+    this._battler._waitInput = true;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandendinput = function(obj) {
+    this._battler._waitInput = false;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandstartdamage = function(obj) {
+    this._battler.startDamage(Object.create(obj));
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandenddamage = function(obj) {
+    this._battler.clearDamage();
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandprojectile = function(obj) {
+    var nobj = Object.create(obj);
+    nobj.item = this._item;
+    this._battler.registProjectile(nobj);
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandletfall = function(obj) {
+    this._battler._motionFall = true;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandnofall = function(obj) {
+    this._battler._motionFall = false;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandwaitfall = function(obj) {
+    this._processingMotionList.push(Object.create(obj));
+    return true;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandapplydamage = function(obj) {
+    if(this._battler._target){
+        var oldd, oldk, oldkd, dmg;
+        if (this._battler.isDamaging()){
+            dmg = true;
+            oldd = this._battler._actions[0]._damagePercentage;
+            oldk = this._battler._damageInfo.knockback;
+            oldkd = this._battler._damageInfo.knockdir;
+        } else {
+            this._battler._damageInfo = {};
+            dmg = false;
+        }
+        this._battler._actions[0]._damagePercentage = obj.damage;
+        this._battler._damageInfo.knockback = obj.knockback;
+        this._battler._damageInfo.knockdir = obj.knockdir;
+        this._battler.forceDamage(this._battler._target);
+        if (dmg){
+            this._battler._actions[0]._damagePercentage = oldd;
+            this._battler._damageInfo.knockback = oldk;
+            this._battler._damageInfo.knockdir = oldkd;
+        } else {
+            this._battler._actions[0]._damagePercentage = 1.0;
+            this._battler._damageInfo = null;
+        }
+    }
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandwaitfall = function(obj) {
+    this._processingMotionList.push(Object.create(obj));
+    return true;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandwaitcast = function(obj) {
+    this._battler._pose = "Cast";
+    this._battler._patternIndex  = -1;
+    this._processingMotionList.push(Object.create(obj));
+    return true;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandrotation = function(obj) {
+    var nobj = Object.create(obj);
+    nobj.rotation = nobj.rotation % 360;
+    this._battler._rotation = this._battler._rotation % 360;
+    var dir = obj.dir > 0 ? 4 : 6;
+    if (dir == 4) {
+        while (this._battler._rotation <= nobj.rotation) {
+            this._battler._rotation += 360;
+        }
+        nobj.rotation -= 360 * nobj.rounds;
+    } else if (dir == 6) {
+        while (this._battler._rotation >= nobj.rotation) {
+            this._battler._rotation -= 360;
+        }
+        nobj.rotation += 360 * nobj.rounds;
+    }
+    this._processingMotionList.push(nobj);
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandsethitstop = function(obj) {
+    this._battler._hitStopLength = obj.length;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandstopallai = function(obj) {
+    this._battler.friendsUnit().members().forEach(function(battler) {
+        if (battler != this._battler){
+            battler._pauseAi = true;
+            battler._forceWaitCount = -1;
+        }
+    }.bind(this))
+    this._battler.opponentsUnit().members().forEach(function(battler) {
+        battler.endMotion();
+        battler.clearAiData();
+        battler._pauseAi = true;
+    })
+    this._stoppedAi = true;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandstartallai = function(obj) {
+    this.startAllAi();
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandif = function(obj) {
+    // Something similar to default damage formula :p
+    var a = this._battler;
+    var b = a._target;
+    var v = $gameVariables._data;
+    if (eval(obj.expression)){
+        this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, obj.list);
+        this._childDescriptor.parent = this;
+    }
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandif = function(obj) {
+    // Something similar to default damage formula :p
+    var a = this._battler;
+    var b = a._target;
+    var v = $gameVariables._data;
+    if (eval(obj.expression)){
+        this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, obj.list);
+        this._childDescriptor.parent = this;
+    }
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandendif = function(obj) {
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandchangeweapon = function(obj) {
+    this._battler._weaponName = obj.name;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandmoveweapon = function(obj) {
+    this._processingMotionList.push(obj);
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandrotateweapon = function(obj) {
+    var nobj = Object.create(obj);
+    nobj.rotation = nobj.rotation % 360;
+    this._battler._weaponProperty.rotation = this._battler._weaponProperty.rotation % 360;
+    var dir = obj.dir > 0 ? 4 : 6;
+    if (dir == 4) {
+        while (this._battler._weaponProperty.rotation <= nobj.rotation) {
+            this._battler._weaponProperty.rotation += 360;
+        }
+        nobj.rotation -= 360 * nobj.rounds;
+    } else if (dir == 6) {
+        while (this._battler._weaponProperty.rotation >= nobj.rotation) {
+            this._battler._weaponProperty.rotation -= 360;
+        }
+        nobj.rotation += 360 * nobj.rounds;
+    }
+    this._battler._weaponProperty.overrideRotation = true;
+    this._processingMotionList.push(nobj);
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandresetweapon = function(obj) {
+    this._battler.clearWeaponProperty();
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandshowskillname = function(obj) {
+    var channel = this._battler.isActor() ? 0 : 1;
+    var string = this._item.name;
+    $gameTemp.setBattleMessage(channel, string);
+    this._showingMessage[channel] = string;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandshowmessage = function(obj) {
+    $gameTemp.setBattleMessage(obj.channel, obj.string);
+    this._showingMessage[obj.channel] = obj.string;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandhidemessage = function(obj) {
+            if ($gameTemp.getBattleMessage(obj.channel) == this._showingMessage[obj.channel]) {
+                $gameTemp.removeBattleMessage(obj.channel);
+            }
+            delete this._showingMessage[obj.channel];
+}
+
 // Process motion executing in list
 // returning true to abort process. Currently only occurs at "wait" command.
 DefaultMotionDescriptor.prototype.processMotion = function(obj) {
-    switch(obj.type){
-        case "pose":
-            this._battler._pose = obj.name;
-            this._battler._patternIndex = 0;
-            break;
-        case "forward":
-            this._battler._patternIndex++;
-            break;
-        case "backward":
-            if (this._battler._patternIndex > 0){
-                this._battler._patternIndex--;
-            }
-            break;
-        case "move":
-            this._processingMotionList.push(Object.create(obj));
-            break;
-        case "wait":
-            this._processingMotionList.push(Object.create(obj));
-            return true;
-        case "startinput":
-            this._battler._waitInput = true;
-            break;
-        case "endinput":
-            this._battler._waitInput = false;
-            break;
-        case "startdamage":
-            this._battler.startDamage(Object.create(obj));
-            break;
-        case "enddamage":
-            this._battler.clearDamage();
-            break;
-        case "projectile":
-            var nobj = Object.create(obj);
-            nobj.item = this._item;
-            this._battler.registProjectile(nobj);
-            break;
-        case "letfall":
-            this._battler._motionFall = true;
-            break;
-        case "nofall":
-            this._battler._motionFall = false;
-            break;
-        case "waitfall":
-            this._processingMotionList.push(Object.create(obj));
-            return true;
-        case "applydamage":
-            if(this._battler._target){
-                var oldd, oldk, oldkd, dmg;
-                if (this._battler.isDamaging()){
-                    dmg = true;
-                    oldd = this._battler._actions[0]._damagePercentage;
-                    oldk = this._battler._damageInfo.knockback;
-                    oldkd = this._battler._damageInfo.knockdir;
-                } else {
-                    this._battler._damageInfo = {};
-                    dmg = false;
-                }
-                this._battler._actions[0]._damagePercentage = obj.damage;
-                this._battler._damageInfo.knockback = obj.knockback;
-                this._battler._damageInfo.knockdir = obj.knockdir;
-                this._battler.forceDamage(this._battler._target);
-                if (dmg){
-                    this._battler._actions[0]._damagePercentage = oldd;
-                    this._battler._damageInfo.knockback = oldk;
-                    this._battler._damageInfo.knockdir = oldkd;
-                } else {
-                    this._battler._actions[0]._damagePercentage = 1.0;
-                    this._battler._damageInfo = null;
-                }
-            }
-            break;
-        case "waitcast":
-            this._battler._pose = "Cast";
-            this._battler._patternIndex = -1;
-            this._processingMotionList.push(Object.create(obj));
-            return true;
-        case "rotation":
-            var nobj = Object.create(obj);
-            nobj.rotation = nobj.rotation % 360;
-            this._battler._rotation = this._battler._rotation % 360;
-            var dir = obj.dir > 0 ? 4 : 6;
-            if (dir == 4) {
-                while (this._battler._rotation <= nobj.rotation) {
-                    this._battler._rotation += 360;
-                }
-                nobj.rotation -= 360 * nobj.rounds;
-            } else if (dir == 6) {
-                while (this._battler._rotation >= nobj.rotation) {
-                    this._battler._rotation -= 360;
-                }
-                nobj.rotation += 360 * nobj.rounds;
-            }
-            this._processingMotionList.push(nobj);
-            break;
-        case "sethitstop":
-            this._battler._hitStopLength = obj.length;
-            break;
-        case "stopallai":
-            this._battler.friendsUnit().members().forEach(function(battler) {
-                if (battler != this._battler){
-                    battler._pauseAi = true;
-                    battler._forceWaitCount = -1;
-                }
-            }.bind(this))
-            this._battler.opponentsUnit().members().forEach(function(battler) {
-                battler.endMotion();
-                battler.clearAiData();
-                battler._pauseAi = true;
-            })
-            this._stoppedAi = true;
-            break;
-        case "startallai":
-            this.startAllAi();
-            break;
-        case "if":
-        // Something similar to default damage formula :p
-            var a = this._battler;
-            var b = a._target;
-            var v = $gameVariables._data;
-            if (eval(obj.expression)){
-                this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, obj.list);
-            }
-            break;
-        case "endif":
-        // Do nothing in DefaultMotionDescriptor, as this is not in a if statement.
-            break;
-        case "changeweapon":
-            this._battler._weaponName = obj.name;
-            break;
-        case "moveweapon" :
-            this._processingMotionList.push(obj);
-            break;
-        case "rotateweapon":
-            var nobj = Object.create(obj);
-            nobj.rotation = nobj.rotation % 360;
-            this._battler._weaponProperty.rotation = this._battler._weaponProperty.rotation % 360;
-            var dir = obj.dir > 0 ? 4 : 6;
-            if (dir == 4) {
-                while (this._battler._weaponProperty.rotation <= nobj.rotation) {
-                    this._battler._weaponProperty.rotation += 360;
-                }
-                nobj.rotation -= 360 * nobj.rounds;
-            } else if (dir == 6) {
-                while (this._battler._weaponProperty.rotation >= nobj.rotation) {
-                    this._battler._weaponProperty.rotation -= 360;
-                }
-                nobj.rotation += 360 * nobj.rounds;
-            }
-            this._battler._weaponProperty.overrideRotation = true;
-            this._processingMotionList.push(nobj);
-            break;
-        case "resetweapon":
-            this._battler.clearWeaponProperty();
-            break;
+    var name = "processMotionCommand" + obj.type;
+    if (this[name]) {
+        return this[name](obj) || false;
     }
     return false;
 }
@@ -1602,52 +1753,63 @@ DefaultMotionDescriptor.prototype.updateProcessingMotion = function() {
     }
 }
 
+DefaultMotionDescriptor.prototype.processProcessingCommandwait = function(obj) {
+    obj.dur--;
+}
+
+DefaultMotionDescriptor.prototype.processProcessingCommandmove = function(obj) {
+    var ddx = obj.dx / obj.dur;
+    var ddy = obj.dy / obj.dur;
+    this._battler.forceMoveWith(ddx * (this._battler._facing ? 1 : -1));
+    this._battler._battleY += ddy;
+    obj.dx -= ddx;
+    obj.dy -= ddy;
+    obj.dur--;
+}
+
+DefaultMotionDescriptor.prototype.processProcessingCommandrotation = function(obj) {
+    var dr = obj.rotation - this._battler._rotation;
+    this._battler._rotation += dr/obj.dur;
+    obj.dur--;
+}
+
+DefaultMotionDescriptor.prototype.processProcessingCommandwaitfall = function(obj) {
+    if(this._battler.isGround() || !this._battler._motionFall){
+        obj.dur = 0;
+    }
+}
+
+DefaultMotionDescriptor.prototype.processProcessingCommandwaitcast = function(obj) {
+    obj.dur--;
+    if(obj.dur == 0){
+        this._battler._patternIndex = 0;
+    }
+}
+
+DefaultMotionDescriptor.prototype.processProcessingCommandmoveweapon = function(obj) {
+    var ddx = obj.dx / obj.dur;
+    var ddy = obj.dy / obj.dur;
+    this._battler._weaponProperty.dx += ddx;
+    this._battler._weaponProperty.dy += ddy;
+    obj.dx -= ddx;
+    obj.dy -= ddy;
+    obj.dur--;
+}
+
+DefaultMotionDescriptor.prototype.processProcessingCommandrotateweapon = function(obj) {
+    var dr = obj.rotation - this._battler._weaponProperty.rotation;
+    this._battler._rotation += dr / obj.dur;
+    obj.dur--;
+}
+
 // Process your motion need various frames at here
 // Remember to include a "dur" property and set it to 0 when the process is finish.
 DefaultMotionDescriptor.prototype.processProcessingMotion = function(obj) {
-    switch(obj.type){
-        case "wait":
-            obj.dur--;
-            break;
-        case "move":
-            var ddx = obj.dx / obj.dur;
-            var ddy = obj.dy / obj.dur;
-            this._battler.forceMoveWith(ddx * (this._battler._facing ? 1 : -1));
-            this._battler._battleY += ddy;
-            obj.dx -= ddx;
-            obj.dy -= ddy;
-            obj.dur--;
-            break;
-        case "rotation":
-            var dr = obj.rotation - this._battler._rotation;
-            this._battler._rotation += dr/obj.dur;
-            obj.dur--;
-            break;
-        case "waitfall":
-            if(this._battler.isGround() || !this._battler._motionFall){
-                obj.dur = 0;
-            }
-            break;
-        case "waitcast":
-            obj.dur--;
-            if(obj.dur == 0){
-                this._battler._patternIndex = 0;
-            }
-            break;
-        case "moveweapon":
-            var ddx = obj.dx / obj.dur;
-            var ddy = obj.dy / obj.dur;
-            this._battler._weaponProperty.dx += ddx;
-            this._battler._weaponProperty.dy += ddy;
-            obj.dx -= ddx;
-            obj.dy -= ddy;
-            obj.dur--;
-            break;
-        case "rotateweapon":
-            var dr = obj.rotation - this._battler._weaponProperty.rotation;
-            this._battler._rotation += dr / obj.dur;
-            obj.dur--;
-            break;
+    var name = "processProcessingCommand" + obj.type;
+    if (this[name]) {
+        this[name](obj);
+    } else {
+        obj.dur = 0;
     }
 }
 
@@ -1655,7 +1817,16 @@ DefaultMotionDescriptor.prototype.release = function() {
     if (this._stoppedAi) {
         this.startAllAi();
     }
+    this.clearBattleMessage();
     AbstractMotionDescriptor.prototype.release.call(this);
+}
+
+DefaultMotionDescriptor.prototype.clearBattleMessage = function() {
+    for (var channel = 0; channel < this._showingMessage.length; channel++) {
+        if (this._showingMessage[channel] == $gameTemp.getBattleMessage(channel)) {
+            $gameTemp.removeBattleMessage(channel);
+        }
+    }
 }
 
 DefaultMotionDescriptor.prototype.motionWaiting = function() {
@@ -1682,15 +1853,19 @@ ChildDefaultMotionDescriptor.prototype.initialize = function (battler, item, lis
     this._processingMotionList = [];
     this._motionList = list;
     this._childDescriptor = null;
+    this.parent = null;
 }
 
-ChildDefaultMotionDescriptor.prototype.processMotion = function(obj) {
-    switch(obj.type){
-        case "endif":
-            this._finish = true;
-            break;
+DefaultMotionDescriptor.prototype.processMotionCommandendif = function(obj) {
+    this._finish = true;
+}
+
+ChildDefaultMotionDescriptor.prototype.clearBattleMessage = function() {
+    for (var channel = 0; channel < this._showingMessage.length; channel++) {
+        if (this._showingMessage[channel]) {
+            this.parent._showingMessage[channel] = this._showingMessage[channel];
+        }
     }
-    return DefaultMotionDescriptor.prototype.processMotion.call(this, obj);
 }
 
 //-----------------------------------------------------------------------------
@@ -1737,8 +1912,14 @@ Game_Battler.prototype.initMembers = function(){
     this._forceWaitCount = 0; // count for hit-stop.
     this._hitStopLength = 15; // Length of hit-stop.
     this._knockbacking = false; // Is knockback or not
+    this.clearCurrentHitCount();
     this.clearChainCount();
 };
+
+Game_Battler.prototype.clearCurrentHitCount = function() {
+    this._currentChainCount = 0;
+    this._currentHitCount = 0;
+}
 
 Kien.LMBS_Core.Game_Battler_xparam = Game_Battler.prototype.xparam;
 Game_Battler.prototype.xparam = function(xparamId) {
@@ -1917,7 +2098,7 @@ Game_Battler.prototype.updateDamaging = function() {
 
 Game_Battler.prototype.moveTo = function(target) {
     this._moveTarget = Math.round(target);
-    this._moveTarget = Math.max(0,Math.min(Kien.LMBS_Core.battleWidth,this._moveTarget));
+    this._moveTarget = Math.max(this._battleRect.width/2 ,Math.min(Kien.LMBS_Core.battleWidth - this._battleRect.width/2,this._moveTarget));
 }
 
 Game_Battler.prototype.moveWith = function(dx) {
@@ -1926,7 +2107,7 @@ Game_Battler.prototype.moveWith = function(dx) {
 
 Game_Battler.prototype.forceMove = function(target) {
     this._battleX = this._moveTarget = Math.round(target);
-    this._moveTarget = this._battleX = Math.max(0,Math.min(Kien.LMBS_Core.battleWidth,this._battleX));
+    this._moveTarget = this._battleX = Math.max(this._battleRect.width/2 ,Math.min(Kien.LMBS_Core.battleWidth - this._battleRect.width/2,this._battleX));
 }
 
 Game_Battler.prototype.forceMoveWith = function(dx) {
@@ -1940,10 +2121,13 @@ Game_Battler.prototype.jump = function(dir) {
 
 Game_Battler.prototype.knockback = function(knockback, knockdir){
     if (!this._guard){
+        this.endMotion();
+        this.clearCurrentHitCount();
         this._knockback.x = knockback.x;
         this._knockback.y = knockback.y;
         this._knockdir = knockdir;
         this._knockbacking = true;
+        this._fallCount = 0;
     } else {
         if (this._guardDuration < Kien.LMBS_Core.autoGuardDuration) {
             this._guardDuration = Kien.LMBS_Core.autoGuardDuration;
@@ -1973,8 +2157,6 @@ Game_Battler.prototype.updateKnockback = function() {
         }
         if (this.isGround()) {
             this._knockbacking = false;
-            console.log(this._hitCount);
-            console.log(this._chainCount);
             this.clearChainCount();
         }
     }
@@ -1995,6 +2177,7 @@ Game_Battler.prototype.updateMotion = function() {
     if (this.isMotion() && !this.isForceWaiting()) {
         if (this._skillMotionDescriptor.isFinish()) {
             this.endMotion();
+            this.clearCurrentHitCount();
         } else {
             this._skillMotionDescriptor.update();
         }
@@ -2331,9 +2514,9 @@ Game_Battler.prototype.dealDamage = function(target) {
         var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
         target.startDamagePopup();
         if (this._actions[0].isDamage() || this._actions[0].isDrain()){
-            target.endMotion();
             target.knockback(this._damageInfo.knockback, dir);
             target.onHitted(this);
+            this.onHit(target);
         }
         BattleManager.refreshStatus();
         this._damageList.push(target);
@@ -2347,11 +2530,20 @@ Game_Battler.prototype.forceDamage = function(target) {
     var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
     target.startDamagePopup();
     if (this._actions[0].isDamage() || this._actions[0].isDrain()){
-        target.endMotion();
         target.knockback(this._damageInfo.knockback, dir);
         target.onHitted(this);
+        this.onHit(target);
     }
     BattleManager.refreshStatus();
+}
+
+Game_Battler.prototype.onHit = function(target) {
+    if (target._hitCount > this._currentHitCount) {
+        this._currentHitCount = target._hitCount;
+    }
+    if (target._chainCount > this._currentChainCount) {
+        this._currentChainCount = target._chainCount;
+    }
 }
 
 Game_Battler.prototype.onHitted = function(user) {
@@ -3096,6 +3288,10 @@ Game_Actor.prototype.onBattleEnd = function() {
     this.resetAi();
 };
 
+Game_Actor.prototype.isInputAvailable = function() {
+    return (!this.isMotion() || this._waitInput) && !this.isKnockback() && !this.isGuard();
+}
+
 Game_Actor.prototype.update = function() {
     Game_Battler.prototype.update.call(this);
     if (BattleManager.isBattleEnd() || !this._battleStart) {
@@ -3104,6 +3300,7 @@ Game_Actor.prototype.update = function() {
     }
     if (!this.isDead()) {
         if (this.isPlayerActor() && !this.isAiForcing()) {
+            this.updateInputData();
             this.updateInputGuard();
             this.updateInputAttack();
             this.updateInputSkill();
@@ -3127,21 +3324,40 @@ Game_Actor.prototype.update = function() {
     }
 }
 
+Game_Actor.prototype.updateInputData = function() {
+    if (this.isKnockback()) {
+        this._inputData.reservedInput = null;
+    } else if (Input.isTriggered('ok')) {
+        this._inputData.reservedInput = 'ok';
+        this._inputData.reservedInputDir = Input.dir4;
+    } else if (Input.isTriggered('cancel')) {
+        this._inputData.reservedInput = 'cancel';
+        this._inputData.reservedInputDir = Input.dir4;
+    } else if (Input.isPressed('LMBSguard')) {
+        this._inputData.reservedInput = 'LMBSguard';
+    }
+}
+
 Game_Actor.prototype.updateInputGuard = function() {
-    if(Input.isPressed('LMBSguard') && !this.isMotion()){
+    if(this._inputData.reservedInput === 'LMBSguard' && !this.isMotion()){
         this._guard = true;
         this._guardDuration = 2;
+        this._inputData.reservedInput = null;
     }
 }
 
 Game_Actor.prototype.updateInputAttack = function() {
-    if(Input.isTriggered('ok')){
+    if(this._inputData.reservedInput ==='ok' && this.isInputAvailable()) {
         this.useNormalAttack(Input.dir4);
+        this._inputData.reservedInput = null;
+        this._inputData.reservedInputDir = 0;
     }
 }
 
 Game_Actor.prototype.updateInputSkill = function() {
-    if(Input.isTriggered('cancel')){
+    if(this._inputData.reservedInput ==='cancel' && this.isInputAvailable()) {
+        this._inputData.reservedInput = null;
+        this._inputData.reservedInputDir = 0;
         var d4 = Input.dir4;
         if(d4 == 4){
             d4 = (this._facing ? 4 : 6)
@@ -4056,8 +4272,15 @@ Window_BattleStatusLMBS.prototype.initialize = function() {
     //this.backOpacity = 0;
     this.opacity = 0;
     this.createContents();
+    this.createSprites();
     this.refresh();
 };
+
+Window_BattleStatusLMBS.prototype.createSprites = function() {
+    for (var i = 0; i < this.maxItems(); i++) {
+
+    }
+}
 
 Window_BattleStatusLMBS.prototype.maxCols = function() {
     return 4;
@@ -4077,14 +4300,6 @@ Window_BattleStatusLMBS.prototype.drawGauge = function(x, y, width, rate, color1
 Window_BattleStatusLMBS.prototype.drawItem = function(index) {
     var actor = $gameParty.battleMembers()[index];
     this.clearItem(index);
-    var tw = Graphics.boxWidth / 4;
-    var tx = tw * index + 15;
-    this.drawText(actor.name(),tx,0,tw-30);
-    this.changeTextColor(this.hpGaugeColor1());
-    this.drawText(actor.hp.toString(),tx,0,tw-30,'right');
-    this.resetTextColor();
-    this.drawGauge(tx, this.lineHeight(), tw-30, actor.mpRate(), this.mpGaugeColor1(), this.mpGaugeColor2());
-    this.drawGauge(tx, this.lineHeight()+6, tw-30, actor.tpRate(), this.tpGaugeColor1(), this.tpGaugeColor2());
 }
 
 Window_BattleStatusLMBS.prototype.itemRect = function(index) {
@@ -4262,6 +4477,47 @@ Window_MessageLMBS.prototype.terminateMessage = function() {
         this._lastBattleEventPause = null;
     }
 };
+
+//-----------------------------------------------------------------------------
+// Window_BattleMessage
+//
+// The window class with cursor movement and scroll functions.
+
+function Window_BattleMessage() {
+    this.initialize.apply(this, arguments);
+}
+
+Window_BattleMessage.prototype = Object.create(Window_Base.prototype);
+Window_BattleMessage.prototype.constructor = Window_BattleMessage;
+
+Window_BattleMessage.TOP_MARGIN = 80;
+Window_BattleMessage.FONT_SIZE = 28;
+
+Window_BattleMessage.prototype.initialize = function(channel, string) {
+    var textWidthBitmap = new Bitmap(1,1);
+    textWidthBitmap.fontSize = Window_BattleMessage.FONT_SIZE;
+    var w = textWidthBitmap.measureTextWidth(string);
+    var ww = w  + this.standardPadding() * 2;
+    var h = Window_BattleMessage.FONT_SIZE + 4 + this.standardPadding() * 2;
+    this._channel = channel; 
+    this._text = string;
+    Window_Base.prototype.initialize.call(this,
+        (this, Graphics.width - ww) / 2, 
+        Window_BattleMessage.TOP_MARGIN + h * channel, 
+        ww, 
+        h);
+    this.active = false;
+    this.drawText(string, 0, 0, w, "center");
+}
+
+Window_BattleMessage.prototype.updateTone = function() {
+    var tone = Kien.LMBS_Core.battleTopMessageWindowColors[this._channel];
+    if (!tone) {
+        tone = Kien.LMBS_Core.battleTopMessageWindowColors[0];
+    }
+    this.setTone(tone.r, tone.g, tone.b);
+};
+
 //-----------------------------------------------------------------------------
 // Sprite_BattlerLMBS
 //
@@ -4313,12 +4569,13 @@ Sprite_BattlerLMBS.prototype.onStart = function() {
 }
 
 Sprite_BattlerLMBS.prototype.cacheAllBitmaps = function(baseName,isactor){
-	var basePath = "img/sv_actors/";
-	basePath = basePath.concat(baseName + "/");
-	this._cachedBitmaps = {};
+    var basePath = "img/sv_actors/";
+    basePath = basePath.concat(baseName + "/");
+    this._cachedBitmaps = {};
     this._cachedBitmapNames = [];
-	this._tempBasePath = basePath;
+    this._tempBasePath = basePath;
     var names = $dataLMBSCharacters[baseName] || [];
+    if (!names.contains("Stand")) names.push("stand");;
     this.cacheAllBitmapsCallBack(names);
 }
 
@@ -5085,8 +5342,11 @@ Sprite_ProjectileLMBS.prototype.updateDamage = function() {
             if(!enemy._battler.isDead() && enemy.battlerBox().overlap(rect) && !this._hit){
                 this._action.apply(enemy._battler);
                 var dir = this._knockbackdir ? ( 5 - this._direction ) : ( 5 + this._direction );
-                enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},dir);
-                enemy._battler.endMotion();
+                if (this._action.isDamage() || this._action.isDrain()){
+                    enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},dir);
+                    enemy._battler.onHitted(this._battler);
+                    this._battler.onHit(enemy._battler);
+                }
                 enemy._battler.startDamagePopup();
                 this._hit = true;
             }
@@ -5268,8 +5528,11 @@ Sprite_AnimationLMBS.prototype.updateDamage = function() {
         if(!enemy._battler.isDead() && enemy.battlerBox().overlap(rect) && obj.hitted.indexOf(enemy) == -1){
             this._action.apply(enemy._battler);
             var dir = obj.knockdir ? (this._battler._facing ? 4 : 6) : (this._battler._facing ? 6 : 4);
-            enemy._battler.knockback(obj.knockback,dir);
-            enemy._battler.endMotion();
+            if (this._action.isDamage() || this._action.isDrain()){
+                enemy._battler.knockback(obj.knockback,dir);
+                enemy._battler.onHitted(this._battler);
+                this._battler.onHit(enemy._battler);
+            }
             enemy._battler.startDamagePopup();
             BattleManager.refreshStatus();
             obj.hitted.push(enemy);
@@ -5541,7 +5804,7 @@ Sprite_EscapeGauge.prototype.createBitmap = function() {
 //-----------------------------------------------------------------------------
 // Sprite_HitCount
 //
-// The sprite for displaying score.
+// The sprite for displaying Hit(Combo) count and Chain count.
 
 function Sprite_HitCount() {
     this.initialize.apply(this, arguments);
@@ -5567,10 +5830,10 @@ Sprite_HitCount.prototype.createSprites = function() {
     this._hitCountSprite.bitmap.fontSize = Sprite_HitCount.HIT_COUNT_FONT_SIZE;
     this._hitSprite = new Sprite();
     this._hitSprite.y = Sprite_HitCount.HIT_COUNT_FONT_SIZE - Sprite_HitCount.HIT_FONT_SIZE;
-    this._hitSprite.bitmap = new Bitmap(this._hitCountSprite.bitmap.width, Sprite_HitCount.HIT_FONT_SIZE + 4);
+    this._hitSprite.bitmap = new Bitmap(Sprite_HitCount.HIT_FONT_SIZE * 4, Sprite_HitCount.HIT_FONT_SIZE + 4);
     this._hitSprite.bitmap.fontSize = Sprite_HitCount.HIT_FONT_SIZE;
     this._hitSprite.bitmap.fontItalic = true;
-    this._hitSprite.bitmap.drawText("HIT",0,0,this._hitSprite.bitmap.width,this._hitSprite.bitmap.height,"right");
+    this._hitSprite.bitmap.drawText("HIT",0,0,this._hitSprite.bitmap.width,this._hitSprite.bitmap.height);
     this._chainCountSprite = new Sprite();
     this._chainCountSprite.y = Math.max(this._hitCountSprite.bitmap.height, this._hitSprite.bitmap.height);
     this._chainCountSprite.bitmap = new Bitmap(Sprite_HitCount.CHAIN_FONT_SIZE * 4 + 4, Sprite_HitCount.CHAIN_FONT_SIZE + 4);
@@ -5587,12 +5850,76 @@ Sprite_HitCount.prototype.createSprites = function() {
 
 Sprite_HitCount.prototype.update = function() {
     Sprite_Base.prototype.update.call(this);
+    this.updateVisibility();
+    this.updateBitmap();
+    this.updateEffect();
+}
+
+Sprite_HitCount.prototype.updateVisibility = function() {
+    var index = $gameTroop.aliveMembers().findIndex(function(obj) {
+        return obj._hitCount > 0;
+    });
+    if (index === -1) {
+        this._lastHitCount = 0;
+        this._hitCountSprite.visible = false;
+        this._hitSprite.visible = false;
+        this._hitCountSprite.bitmap.clear();
+    } else {
+        this._hitCountSprite.visible = true;
+        this._hitSprite.visible = true;
+    }
+    index = $gameTroop.aliveMembers().findIndex(function(obj) {
+        return obj._chainCount > 0;
+    });
+    if (index === -1) {
+        this._lastChainCount = 0;
+        this._chainCountSprite.visible = false;
+        this._chainSprite.visible = false;
+        this._chainCountSprite.bitmap.clear();
+    } else {
+        this._chainCountSprite.visible = true;
+        this._chainSprite.visible = true;
+    }
 }
 
 Sprite_HitCount.prototype.updateBitmap = function() {
+    if (this._hitCountSprite.visible) {
+        var index = $gameTroop.aliveMembers().findIndex(function(obj) {
+            return obj._hitCount > this._lastHitCount;
+        }.bind(this));
+        if (index >= 0) {
+            this._lastHitCount = $gameTroop.aliveMembers()[index]._hitCount;
+            this._hitCountSprite.bitmap.clear();
+            this._hitCountSprite.bitmap.drawText(this._lastHitCount.toString(),0,0,this._hitCountSprite.bitmap.width,this._hitCountSprite.bitmap.height);
+            this._hitSprite.x = this._hitCountSprite.bitmap.measureTextWidth(this._lastHitCount.toString()) + 4;
+            this._hitCountSprite.scale.x = 1.2;
+            this._hitCountSprite.scale.y = 1.2;
+            this._hitSprite.scale.x = 1.2;
+            this._hitSprite.scale.y = 1.2;
+        }
+    }
+    if (this._chainCountSprite.visible) {
+        var index = $gameTroop.aliveMembers().findIndex(function(obj) {
+            return obj._chainCount > this._lastChainCount;
+        }.bind(this));
+        if (index >= 0) {
+            this._lastChainCount = $gameTroop.aliveMembers()[index]._chainCount;
+            this._chainCountSprite.bitmap.clear();
+            this._chainCountSprite.bitmap.drawText(this._lastChainCount.toString(),0,0,this._chainCountSprite.bitmap.width,this._chainCountSprite.bitmap.height);
+            this._chainSprite.x = this._chainCountSprite.bitmap.measureTextWidth(this._lastChainCount.toString()) + 4;
+        }
+    }
 }
 
 Sprite_HitCount.prototype.updateEffect = function() {
+    if (this._hitCountSprite.scale.x > 1.0) {
+        this._hitCountSprite.scale.x = Math.max(this._hitCountSprite.scale.x - 0.02, 1);
+        this._hitSprite.scale.x = this._hitCountSprite.scale.x;
+    }
+    if (this._hitCountSprite.scale.y > 1.0) {
+        this._hitCountSprite.scale.y = Math.max(this._hitCountSprite.scale.y - 0.02, 1);
+        this._hitSprite.scale.y = this._hitCountSprite.scale.y;
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -5616,8 +5943,11 @@ Spriteset_BattleLMBS.prototype.createLowerLayer = function() {
     this.createBackground();
     this.createBattleback();
     this.createBattlerSprite();
-    
 }
+
+Spriteset_BattleLMBS.prototype.createUpperLayer = function() {
+    Spriteset_Base.prototype.createUpperLayer.call(this);
+};
 
 Spriteset_BattleLMBS.prototype.createBackground = function() {
     this._backgroundSprite = new Sprite();
@@ -5969,6 +6299,7 @@ Scene_BattleLMBS.prototype.create = function() {
         "jumpInputDur": 0
     };
     this._battleEnd = false;
+    this.createHitCountSprite();
     this.createWindowLayer();
     this.createAllWindows();
     this.createRewardSprite();
@@ -6004,6 +6335,7 @@ Scene_BattleLMBS.prototype.createMessageWindow = function() {
     this._messageWindow.subWindows().forEach(function(window) {
         this.addWindow(window);
     }, this);
+    this._battleMessageWindows = [];
 }
 
 Scene_BattleLMBS.prototype.createStatusWindow = function() {
@@ -6090,6 +6422,13 @@ Scene_BattleLMBS.prototype.createRewardSprite = function() {
     this._spriteset.addChild(this._rewardSprite);
 }
 
+Scene_BattleLMBS.prototype.createHitCountSprite = function() {
+    this._hitCountSprite = new Sprite_HitCount();
+    this._hitCountSprite.x = Graphics.width - (Sprite_HitCount.HIT_FONT_SIZE * 4 + 4);
+    this._hitCountSprite.y = 40;
+    this.addChild(this._hitCountSprite);
+}
+
 Scene_BattleLMBS.prototype.start = function() {
     Scene_Base.prototype.start.call(this);
     this.startFadeIn(this.fadeSpeed(), false);
@@ -6121,6 +6460,7 @@ Scene_BattleLMBS.prototype.update = function() {
         }
         this.updateTurn();
     }
+    this.updateBattleMessage();
     this.updateInput();
     this.updateMain();
     this.updateCamera();
@@ -6158,6 +6498,27 @@ Scene_BattleLMBS.prototype.updateMain = function() {
 
 Scene_BattleLMBS.prototype.activeActor = function() {
     return BattleManager.actor();
+}
+
+Scene_BattleLMBS.prototype.updateBattleMessage = function() {
+    var length = $gameTemp.getBattleMessageLength();
+    for (var channel = 0; channel < length; channel++) {
+        if (!$gameTemp.getBattleMessage(channel) && this._battleMessageWindows[channel]) {
+            this._windowLayer.removeChild(this._battleMessageWindows[channel]);
+            delete this._battleMessageWindows[channel];
+        } else if ($gameTemp.getBattleMessage(channel)) {
+            if (this._battleMessageWindows[channel]) {
+                if (this._battleMessageWindows[channel]._text == $gameTemp.getBattleMessage(channel)) {
+                    continue;
+                } else {
+                    this._windowLayer.removeChild(this._battleMessageWindows[channel]);
+                    delete this._battleMessageWindows[channel];
+                }
+            }
+            this._battleMessageWindows[channel] = new Window_BattleMessage(channel, $gameTemp.getBattleMessage(channel));
+            this.addWindow(this._battleMessageWindows[channel]);
+        }
+    }
 }
 
 Scene_BattleLMBS.prototype.updateInput = function() {
@@ -6255,6 +6616,7 @@ Scene_BattleLMBS.prototype.terminate = function() {
     $gameTroop.onBattleEnd();
     AudioManager.stopMe();
     $gameScreen.clearBattleCamera();
+    $gameTemp.clearBattleMessage();
 };
 
 Scene_BattleLMBS.prototype.needsSlowFadeOut = function() {
