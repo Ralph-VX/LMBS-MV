@@ -1262,6 +1262,7 @@ BattleManager.nextTarget = function(originalTarget) {
         }
     }
 }
+
 //-----------------------------------------------------------------------------
 // Game_Temp
 //
@@ -3201,6 +3202,163 @@ Game_LMBSAiForceAction.prototype.update = function() {
 }
 
 //-----------------------------------------------------------------------------
+// Game_LMBSAiActorPhysicalAction
+//
+// Ai Action to chain skill automatically
+
+function Game_LMBSAiEnemyPhysicalAction() {
+    this.initialize.apply(this,arguments);
+}
+
+Game_LMBSAiEnemyPhysicalAction.prototype = Object.create(Game_LMBSAiBase.prototype);
+Game_LMBSAiEnemyPhysicalAction.prototype.constructor = Game_LMBSAiEnemyPhysicalAction;
+
+Game_LMBSAiEnemyPhysicalAction.prototype.initialize = function() {
+    Game_LMBSAiBase.prototype.initialize.apply(this,arguments);
+    this._phase = 0;
+}
+
+Game_LMBSAiEnemyPhysicalAction.prototype.setup = function(obj) {
+    Game_LMBSAiBase.prototype.setup.apply(this,arguments);
+    this._distance = obj.dist;
+}
+
+Game_LMBSAiEnemyPhysicalAction.prototype.isFinish = function() {
+    return this._phase == 2;
+}
+
+Game_LMBSAiEnemyPhysicalAction.prototype.setFinish = function() {
+    this._phase = 2;
+}
+
+Game_LMBSAiEnemyPhysicalAction.prototype.update = function() {
+    Game_LMBSAiBase.prototype.update.call(this);
+    switch (this._phase) {
+        case 0:
+            this._battler.pushAi(Game_LMBSAiAttackMove,{'dist': this._distance,'target': this._battler._target});
+            this._phase = 1;
+            break;
+        case 1:
+            this._battler.startAiIdle(true);
+            this._battler.pushAiWaitIdle();
+            this._phase = 2;
+            break;
+        }
+}
+
+//-----------------------------------------------------------------------------
+// Game_LMBSAiEnemyMagicalAction
+//
+// Ai Action use Magic Skills at a certain position.
+// What this action do is:
+//  1. move actor to its initial position
+//  2. Let him cast the skill.
+//  3. Wait him finish his skill.
+// and then handout the control of actor to its parent AI.
+
+function Game_LMBSAiEnemyMagicalAction() {
+    this.initialize.apply(this,arguments);
+}
+
+Game_LMBSAiEnemyMagicalAction.prototype = Object.create(Game_LMBSAiBase.prototype);
+Game_LMBSAiEnemyMagicalAction.prototype.constructor = Game_LMBSAiEnemyMagicalAction;
+
+Game_LMBSAiEnemyMagicalAction.prototype.initialize = function() {
+    Game_LMBSAiBase.prototype.initialize.apply(this,arguments);
+    this._phase = 0;
+}
+
+Game_LMBSAiEnemyMagicalAction.prototype.setup = function(obj) {
+    Game_LMBSAiBase.prototype.setup.apply(this,arguments);
+}
+
+Game_LMBSAiEnemyMagicalAction.prototype.isFinish = function() {
+    return this._phase == 2;
+}
+
+Game_LMBSAiEnemyMagicalAction.prototype.setFinish = function() {
+    this._phase = 2;
+}
+
+Game_LMBSAiEnemyMagicalAction.prototype.update = function() {
+    Game_LMBSAiBase.prototype.update.call(this);
+    switch (this._phase){
+        case 0:// Back to initial position, and use the skill
+            var tx = Kien.LMBS_Core.enemyXStart + this._battler._screenX;
+            this._battler.pushAi(Game_LMBSAiMoveTo, {'target': {'_battleX':tx}});
+            this._phase = 1;
+            return;
+        case 1: 
+            this._battler._moveTarget = this._battler._battleX;
+            this._battler._facing = (this._battler._target._battleX > this._battler._battleX);
+            this._battler.useSkill(this._battler._aiData.readySkill.id);
+            this._battler.startAiIdle(true);
+            this._battler.pushAiWaitIdle();
+            this._phase = 2;
+            return;
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Game_LMBSAiEnemyBase
+
+function Game_LMBSAiEnemyBase() {
+    this.initialize.apply(this,arguments);
+}
+
+Game_LMBSAiEnemyBase.prototype = Object.create(Game_LMBSAiBase.prototype);
+Game_LMBSAiEnemyBase.prototype.constructor = Game_LMBSAiEnemyBase;
+
+Game_LMBSAiEnemyBase.prototype.initialize = function() {
+    Game_LMBSAiBase.prototype.initialize.apply(this,arguments);
+    this._phase = 0;
+}
+
+Game_LMBSAiEnemyBase.prototype.setup = function(obj) {
+    Game_LMBSAiBase.prototype.setup.apply(this,arguments);
+}
+
+Game_LMBSAiEnemyBase.prototype.isFinish = function() {
+    // As the basic Ai for battlers, this Ai will never finish.
+    //To Pause Ai just do nothing in its update.
+    return false;
+}
+
+Game_LMBSAiEnemyBase.prototype.update = function() {
+    var actionList = this._battler.availableActions();
+    if (actionList.length > 0 && this._battler._target !== null) {
+        var ratingZero = this._battler.actionListRatingMax(actionList) - 3;
+        var action = this._battler.selectAction(actionList,ratingZero);
+        if (action) {
+            var skill = $dataSkills[action.skillId];
+            if (skill.hitType == Game_Action.HITTYPE_MAGICAL){
+                this._battler._aiData.actionType = 'magic';
+                this._battler._aiData.readySkill = skill;
+                this._battler.chooseTarget();
+                this._battler.pushAi(Game_LMBSAiEnemyMagicalAction);
+            } else if (skill.hitType == Game_Action.HITTYPE_PHYSICAL) {
+                this._battler._aiData.actionType = 'attack';
+                var dist = Kien.LMBS_Core.getSkillRange(skill);
+                this._battler._aiData.readySkill = skill;
+                this._battler.chooseTarget();
+                this._battler.pushAi(Game_LMBSAiEnemyPhysicalAction,{'dist': dist });
+            } else {
+                this._battler._aiData.actionType = 'certain';
+                this._battler._aiData.readySkill = skill;
+                this._battler.chooseTarget();
+                this._battler.startAiIdle(true);
+                this._battler.pushAiWaitIdle();
+                this._battler.pushAi(Game_LMBSAiCertainAction);
+            }
+        } else {
+            this._battler.startAiIdle();
+        }
+    } else {
+        this._battler.startAiIdle();
+    }
+}
+
+//-----------------------------------------------------------------------------
 // Game_Actor
 //
 // The game object class for an actor.
@@ -3788,180 +3946,6 @@ Game_Actor.prototype.getWeaponName = function() {
 }
 
 //-----------------------------------------------------------------------------
-// Game_LMBSAiActorPhysicalAction
-//
-// Ai Action to chain skill automatically
-
-function Game_LMBSAiEnemyPhysicalAction() {
-    this.initialize.apply(this,arguments);
-}
-
-Game_LMBSAiEnemyPhysicalAction.prototype = Object.create(Game_LMBSAiBase.prototype);
-Game_LMBSAiEnemyPhysicalAction.prototype.constructor = Game_LMBSAiEnemyPhysicalAction;
-
-Game_LMBSAiEnemyPhysicalAction.prototype.initialize = function() {
-    Game_LMBSAiBase.prototype.initialize.apply(this,arguments);
-    this._phase = 0;
-}
-
-Game_LMBSAiEnemyPhysicalAction.prototype.setup = function(obj) {
-    Game_LMBSAiBase.prototype.setup.apply(this,arguments);
-    this._distance = obj.dist;
-}
-
-Game_LMBSAiEnemyPhysicalAction.prototype.isFinish = function() {
-    return this._phase == 2;
-}
-
-Game_LMBSAiEnemyPhysicalAction.prototype.setFinish = function() {
-    this._phase = 2;
-}
-
-Game_LMBSAiEnemyPhysicalAction.prototype.update = function() {
-    Game_LMBSAiBase.prototype.update.call(this);
-    switch (this._phase) {
-        case 0:
-            this._battler.pushAi(Game_LMBSAiAttackMove,{'dist': this._distance,'target': this._battler._target});
-            this._phase = 1;
-            break;
-        case 1:
-            this._battler.startAiIdle(true);
-            this._battler.pushAiWaitIdle();
-            this._phase = 2;
-            break;
-        }
-}
-
-//-----------------------------------------------------------------------------
-// Game_LMBSAiEnemyMagicalAction
-//
-// Ai Action use Magic Skills at a certain position.
-// What this action do is:
-//  1. move actor to its initial position
-//  2. Let him cast the skill.
-//  3. Wait him finish his skill.
-// and then handout the control of actor to its parent AI.
-
-function Game_LMBSAiEnemyMagicalAction() {
-    this.initialize.apply(this,arguments);
-}
-
-Game_LMBSAiEnemyMagicalAction.prototype = Object.create(Game_LMBSAiBase.prototype);
-Game_LMBSAiEnemyMagicalAction.prototype.constructor = Game_LMBSAiEnemyMagicalAction;
-
-Game_LMBSAiEnemyMagicalAction.prototype.initialize = function() {
-    Game_LMBSAiBase.prototype.initialize.apply(this,arguments);
-    this._phase = 0;
-}
-
-Game_LMBSAiEnemyMagicalAction.prototype.setup = function(obj) {
-    Game_LMBSAiBase.prototype.setup.apply(this,arguments);
-}
-
-Game_LMBSAiEnemyMagicalAction.prototype.isFinish = function() {
-    return this._phase == 2;
-}
-
-Game_LMBSAiEnemyMagicalAction.prototype.setFinish = function() {
-    this._phase = 2;
-}
-
-Game_LMBSAiEnemyMagicalAction.prototype.update = function() {
-    Game_LMBSAiBase.prototype.update.call(this);
-    switch (this._phase){
-        case 0:// Back to initial position, and use the skill
-            var tx = Kien.LMBS_Core.enemyXStart + this._battler._screenX;
-            this._battler.pushAi(Game_LMBSAiMoveTo, {'target': {'_battleX':tx}});
-            this._phase = 1;
-            return;
-        case 1: 
-            this._battler._moveTarget = this._battler._battleX;
-            this._battler._facing = (this._battler._target._battleX > this._battler._battleX);
-            this._battler.useSkill(this._battler._aiData.readySkill.id);
-            this._battler.startAiIdle(true);
-            this._battler.pushAiWaitIdle();
-            this._phase = 2;
-            return;
-    }
-}
-
-//-----------------------------------------------------------------------------
-// Game_LMBSAiCertainAction
-//
-// Ai Action use Magic Skills at a certain position.
-// What this action do is:
-//  1. move actor to its initial position
-//  2. Let him cast the skill.
-//  3. Wait him finish his skill.
-// and then handout the control of actor to its parent AI.
-
-//-----------------------------------------------------------------------------
-// Game_LMBSAiActorBase
-//
-// Ai Action use Magic Skills at a certain position.
-// What this action do is:
-//  1. move actor to its initial position
-//  2. Let him cast the skill.
-//  3. Wait him finish his skill.
-// and then handout the control of actor to its parent AI.
-
-function Game_LMBSAiEnemyBase() {
-    this.initialize.apply(this,arguments);
-}
-
-Game_LMBSAiEnemyBase.prototype = Object.create(Game_LMBSAiBase.prototype);
-Game_LMBSAiEnemyBase.prototype.constructor = Game_LMBSAiEnemyBase;
-
-Game_LMBSAiEnemyBase.prototype.initialize = function() {
-    Game_LMBSAiBase.prototype.initialize.apply(this,arguments);
-    this._phase = 0;
-}
-
-Game_LMBSAiEnemyBase.prototype.setup = function(obj) {
-    Game_LMBSAiBase.prototype.setup.apply(this,arguments);
-}
-
-Game_LMBSAiEnemyBase.prototype.isFinish = function() {
-    // As the basic Ai for battlers, this Ai will never finish.
-    //To Pause Ai just do nothing in its update.
-    return false;
-}
-
-Game_LMBSAiEnemyBase.prototype.update = function() {
-    var actionList = this._battler.availableActions();
-    if (actionList.length > 0 && this._battler._target !== null) {
-        var ratingZero = this._battler.actionListRatingMax(actionList) - 3;
-        var action = this._battler.selectAction(actionList,ratingZero);
-        if (action) {
-            var skill = $dataSkills[action.skillId];
-            if (skill.hitType == Game_Action.HITTYPE_MAGICAL){
-                this._battler._aiData.actionType = 'magic';
-                this._battler._aiData.readySkill = skill;
-                this._battler.chooseTarget();
-                this._battler.pushAi(Game_LMBSAiEnemyMagicalAction);
-            } else if (skill.hitType == Game_Action.HITTYPE_PHYSICAL) {
-                this._battler._aiData.actionType = 'attack';
-                var dist = Kien.LMBS_Core.getSkillRange(skill);
-                this._battler._aiData.readySkill = skill;
-                this._battler.chooseTarget();
-                this._battler.pushAi(Game_LMBSAiEnemyPhysicalAction,{'dist': dist });
-            } else {
-                this._battler._aiData.actionType = 'certain';
-                this._battler._aiData.readySkill = skill;
-                this._battler.chooseTarget();
-                this._battler.startAiIdle(true);
-                this._battler.pushAiWaitIdle();
-                this._battler.pushAi(Game_LMBSAiCertainAction);
-            }
-        } else {
-            this._battler.startAiIdle();
-        }
-    } else {
-        this._battler.startAiIdle();
-    }
-}
-
-//-----------------------------------------------------------------------------
 // Game_Enemy
 //
 // The game object class for an enemy.
@@ -4306,9 +4290,9 @@ Window_SkillType.prototype.makeCommandList = function() {
 };
 
 //-----------------------------------------------------------------------------
-// Window_SkillType
+// Window_SkillConfig
 //
-// The window for selecting a skill type on the skill screen.
+// The window for Showing How the skill is asigned to each key.
 
 function Window_SkillConfig() {
     this.initialize.apply(this, arguments);
@@ -5206,6 +5190,7 @@ Sprite_BattlerLMBS.prototype.renderWebGL = function (renderer)
         renderer.maskManager.popMask(renderer);
     }
 };
+
 //-----------------------------------------------------------------------------
 // Sprite_ActorLMBS
 //
@@ -5576,7 +5561,6 @@ Sprite_GravityProjectileLMBS.prototype.outOfBound = function() {
     return Sprite_ProjectileLMBS.prototype.outOfBound.call(this) || this.y > Kien.LMBS_Core.battleY;
 }
 
-
 //-----------------------------------------------------------------------------
 // Sprite_AnimationLMBS
 //
@@ -5807,7 +5791,6 @@ Sprite_AnimationLMBS.prototype.updateProcessingTiming = function() {
     }
 }
 
-
 //-----------------------------------------------------------------------------
 // Sprite_BattleRewardLMBS
 //
@@ -5964,6 +5947,7 @@ Sprite_BattleRewardLMBS.prototype.createItemPart = function() {
         }
     }
 }
+
 Sprite_BattleRewardLMBS.prototype.drawIconTo = function(target,iconIndex,x,y){
     var bitmap = ImageManager.loadSystem('IconSet');
     var pw = Window_Base._iconWidth;
@@ -5972,6 +5956,7 @@ Sprite_BattleRewardLMBS.prototype.drawIconTo = function(target,iconIndex,x,y){
     var sy = Math.floor(iconIndex / 16) * ph;
     target.blt(bitmap, sx, sy, pw, ph, x, y);
 }
+
 Sprite_BattleRewardLMBS.prototype.updateAllParts = function() {
     for (var i = 0 ; i < this.sprites.length ; i++){
         var sprite = this.sprites[i];
@@ -5988,6 +5973,11 @@ Sprite_BattleRewardLMBS.prototype.updateAllParts = function() {
         }
     }
 }
+
+//-----------------------------------------------------------------------------
+// Sprite_EscapeGauge
+//
+// The sprite for displaying Escaping Gauge.
 
 function Sprite_EscapeGauge() {
     this.initialize.apply(this, arguments);
@@ -7102,5 +7092,3 @@ Scene_BattleLMBS.prototype.onEnemyListCancel = function() {
             break;
     }
 }
-
-//})();
