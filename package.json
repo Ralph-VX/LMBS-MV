@@ -1,0 +1,16 @@
+{
+  "name": "lmbs",
+  "version": "1.0.0",
+  "description": "lmbs for mv",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build:project" : "node ./concat.js/ LinearMotionBattleSystem_Core.js ./dev/lmbs_core ./js/plugins/",
+    "build" : "node ./concat.js/ LinearMotionBattleSystem_Core.js ./dev/lmbs_core ./"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concat-with-sourcemaps": "^1.0.4"
+  }
+}
