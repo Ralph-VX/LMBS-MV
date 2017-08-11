@@ -122,6 +122,22 @@ Kien.LMBS_Core = {};
  * plugin command.
  * @default false
  *
+ * @param ===Key Settings===
+ * @desc 
+ * @default 
+ *
+ * @param Guard Key
+ * @desc virtual key code of the key for Guarding.
+ * @default 67
+ *
+ * @param Previous Target Key
+ * @desc virtual key code of the key for selecting Previous Target.
+ * @default 65
+ *
+ * @param Next Target Key
+ * @desc virtual key code of the key for selecting Next Target.
+ * @default 83
+ *
  * @param ===Menu Settings===
  * @desc 
  * @default 
@@ -394,6 +410,10 @@ Kien.LMBS_Core.skillTypeName = Kien.LMBS_Core.parameters["Skill Set Name"];
 Kien.LMBS_Core.skillSetRightLeft = eval(Kien.LMBS_Core.parameters["Skill Set Left Right Act Same"]);
 Kien.LMBS_Core.inputDelay = parseInt(Kien.LMBS_Core.parameters["Delay for jump"]);
 Kien.LMBS_Core.defaultBattleEventPause = parseInt(Kien.LMBS_Core.parameters["Pause Game While Event By Default"]);
+Kien.LMBS_Core.gaurdKey = parseInt(Kien.LMBS_Core.parameters["Guard Key"]);
+Kien.LMBS_Core.previousTargetKey = parseInt(Kien.LMBS_Core.parameters["Previous Target Key"]);
+Kien.LMBS_Core.nextTargetKey = parseInt(Kien.LMBS_Core.parameters["Next Target Key"]);
+Kien.LMBS_Core.autoGuardDuration = parseInt(Kien.LMBS_Core.parameters["Auto Guard Time After Guard"]);
 Kien.LMBS_Core.maxCameraZoom = parseFloat(Kien.LMBS_Core.parameters["Max Camera Zoom"]);
 Kien.LMBS_Core.minCameraZoom = parseFloat(Kien.LMBS_Core.parameters["Min Camera Zoom"]);
 Kien.LMBS_Core.leftCameraMargin = parseInt(Kien.LMBS_Core.parameters["Camera Left Margin"]);
@@ -620,7 +640,7 @@ Kien.LMBS_Core.createMotionListFromNote = function(obj) {
     });
     if(array.length === 0){
         if (obj.meta["Skill Motion"]){
-            var fn = obj.meta["skill Motion"];
+            var fn = obj.meta["Skill Motion"];
             var fpath = "data/motions/" + fn + ".json";
             var xhr = new XMLHttpRequest();
             var url = fpath;
@@ -770,7 +790,7 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "type" : "endinput"
         });
     }
-    if(line.match(/StartDamage ([+-]?\d+)\,([+-]?\d+)\,(\d+)\,(\d+)\,(\d+(?:\.\d+)?)\,(\d+)\,(\d+)\,(\d+)/)) {
+    if(line.match(/StartDamage ([+-]?\d+)\,([+-]?\d+)\,(\d+)\,(\d+)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)/)) {
         list.push({
             "type" : "startdamage",
             "rect" : {"x":     parseFloat(RegExp.$1,10),
@@ -810,7 +830,7 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "dur" : 1
         });
     }
-    if(line.match(/ApplyDamage (\d+(?:\.\d+)?)\,(\d+)\,(\d+)\,(\d+)/)){
+    if(line.match(/ApplyDamage (\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)/)){
         list.push({
             "type" : "applydamage",
             "damage" : parseFloat(RegExp.$1),
@@ -1116,7 +1136,9 @@ if (!Math.rad2Deg) {
  * @type Object
  */
  
-Input.keyMapper[67] = 'LMBSguard';
+Input.keyMapper[Kien.LMBS_Core.guardKey] = 'LMBSguard';
+Input.keyMapper[Kien.LMBS_Core.previousTargetKey] = 'LMBSprevioustarget';
+Input.keyMapper[Kien.LMBS_Core.nextTargetKey] = 'LMBSnexttarget';
 
 DataManager._databaseFiles.push({ name: '$dataLMBSCharacters',       src: 'characterList.json'       });
 
@@ -1211,6 +1233,35 @@ BattleManager.isEventPausing = function() {
     return this.isEventRunning() && $gameSystem._LMBSBattleEventPauseGame;
 }
 
+BattleManager.previousTarget = function(originalTarget) {
+    var members = originalTarget.friendsUnit().aliveMembers();
+    var targets = members.filter(function(t) {return originalTarget._battleX > t._battleX}).sort(function(a,b) { return b._battleX - a._battleX});
+    if (targets.length > 0) {
+        return targets[0]
+    } else {
+        targets = members.filter(function(t) {return originalTarget._battleX < t._battleX}).sort(function(a,b) { return b._battleX - a._battleX});
+        if (targets.length > 0) {
+            return targets[0]
+        } else {
+            return originalTarget;
+        }
+    }
+}
+
+BattleManager.nextTarget = function(originalTarget) {
+    var members = originalTarget.friendsUnit().aliveMembers();
+    var targets = members.filter(function(t) {return originalTarget._battleX < t._battleX}).sort(function(a,b) { return a._battleX - b._battleX});
+    if (targets.length > 0) {
+        return targets[0]
+    } else {
+        targets = members.filter(function(t) {return originalTarget._battleX > t._battleX}).sort(function(a,b) { return a._battleX - b._battleX});
+        if (targets.length > 0) {
+            return targets[0]
+        } else {
+            return originalTarget;
+        }
+    }
+}
 //-----------------------------------------------------------------------------
 // Game_Temp
 //
@@ -1369,6 +1420,31 @@ Game_Action.prototype.apply = function(target) {
     this.applyItemUserEffect(target);
 };
 
+Game_Action.prototype.isHpHeal = function() {
+    return this.isHpRecover() || this.hasHpRecoverEffect();
+};
+
+Game_Action.prototype.hasHpRecoverEffect = function() {
+    return this.item().effects.some(function(effect) {
+        return effect.code == Game_Action.EFFECT_RECOVER_HP && this.isEffectHeal(effect);
+    }, this);
+};
+
+Game_Action.prototype.isEffectHeal = function() {
+    return (effect.value1 > 0 && effect.value2 >= 0) || (effect.value1 >= 0 && effect.value2 > 0);;
+}
+
+Game_Action.prototype.isDeathStateRemoving = function() {
+    return this.item().effects.some(function(effect) {
+        return effect.code == Game_Action.EFFECT_REMOVE_STATE && effect.dataId == this.subject().deathStateId();
+    }, this);
+}
+
+Game_Action.prototype.isStateRemoving = function() {
+    return this.item().effects.some(function(effect) {
+        return effect.code == Game_Action.EFFECT_REMOVE_STATE;
+    }, this);
+}
 
 //-----------------------------------------------------------------------------
 // AbstractMotionDescriptor
@@ -1467,10 +1543,12 @@ DefaultMotionDescriptor.prototype.initialize = function (battler, item) {
     }
     this._processingMotionList = [];
     this._motionList = Kien.LMBS_Core.createMotionListFromNote(item);
-    if (DataManager.isSkill(item)) {
-        this._battler.paySkillCost(item);
-    } else {
-        this._battler.consumeItem(item);
+    if (!this._skillToBeCast) {
+        if (DataManager.isSkill(item)) {
+            this._battler.paySkillCost(item);
+        } else {
+            this._battler.consumeItem(item);
+        }
     }
 }
 
@@ -1798,7 +1876,7 @@ DefaultMotionDescriptor.prototype.processProcessingCommandmoveweapon = function(
 
 DefaultMotionDescriptor.prototype.processProcessingCommandrotateweapon = function(obj) {
     var dr = obj.rotation - this._battler._weaponProperty.rotation;
-    this._battler._rotation += dr / obj.dur;
+    this._battler._weaponProperty.rotation += dr / obj.dur;
     obj.dur--;
 }
 
@@ -3304,6 +3382,7 @@ Game_Actor.prototype.update = function() {
             this.updateInputGuard();
             this.updateInputAttack();
             this.updateInputSkill();
+            this.updateInputTarget();
             if (!this.isMotion() && !this.isGuard()) {
                 this.updateInputDash();
                 if(this._inputData.lastDir != 0){
@@ -3343,6 +3422,7 @@ Game_Actor.prototype.updateInputGuard = function() {
         this._guard = true;
         this._guardDuration = 2;
         this._inputData.reservedInput = null;
+        this._inputData.reservedInputDir = 0;
     }
 }
 
@@ -3355,6 +3435,20 @@ Game_Actor.prototype.updateInputAttack = function() {
 }
 
 Game_Actor.prototype.updateInputSkill = function() {
+    if(this._inputData.reservedInput ==='cancel' && this.isInputAvailable()) {
+        this._inputData.reservedInput = null;
+        this._inputData.reservedInputDir = 0;
+        var d4 = Input.dir4;
+        if(d4 == 4){
+            d4 = (this._facing ? 4 : 6)
+        } else if (d4 == 6){
+            d4 = (this._facing ? 6 : 4)
+        }
+        this.useRegistedSkill(d4);
+    }
+}
+
+Game_Actor.prototype.updateInputTarget = function() {
     if(this._inputData.reservedInput ==='cancel' && this.isInputAvailable()) {
         this._inputData.reservedInput = null;
         this._inputData.reservedInputDir = 0;
@@ -3385,7 +3479,8 @@ Game_Actor.prototype.updateInputJump = function() {
         this._inputData.jumpInputDur++;
         if (this._inputData.jumpInputDur == Kien.LMBS_Core.inputDelay){
             var dir = Input.isPressed('left') ? 4 : Input.isPressed('right') ? 6 : 0
-            this.jump(dir);   
+            this.jump(dir);
+            this._inputData.jumpInputDur = 0;
         }
     } else {
         this._inputData.jumpInputDur = 0;
@@ -3483,6 +3578,22 @@ Game_Actor.prototype.chooseRandomSkill = function(skills) {
 
 Game_Actor.prototype.chooseTarget = function() {
     this._target = null;
+    if (this._aiData.readySkill) {
+        var action = new Game_Action(this);
+        action.setSkill(this._aiData.readySkill);
+        if (action.isForOpponent()) {
+            this.chooseEnemyTarget();
+        } else if (action.isForDeadFriend()) {
+            this._target = this.friendsUnit().randomDeadTarget();
+        } else if (action.isForFriend()) {
+            this.chooseFriendTarget();
+        }
+    } else {
+        this.chooseEnemyTarget();
+    }
+}
+
+Game_Actor.prototype.chooseEnemyTarget = function() {
     switch (this._aiData.targetType){
         case "nearest":
             this.chooseNearestTarget();
@@ -3499,6 +3610,18 @@ Game_Actor.prototype.chooseTarget = function() {
     }
     if (this._target == null) {
         this.chooseNearestTarget();
+    }
+}
+
+Game_Actor.prototype.chooseFriendTarget = function() {
+    var action = new Game_Action(this);
+    action.setSkill(this._aiData.readySkill);
+    if (action.isDeathStateRemoving()) {
+        this._target = this.friendsUnit().randomDeadTarget();
+    }
+    if (!this._target && action.isStateRemoving()) {
+        var members = this.friendsUnit().battleMembers();
+        var states = 
     }
 }
 
@@ -3650,7 +3773,7 @@ Game_Actor.prototype.performVictorySkill = function() {
 
 Game_Actor.prototype.getWeaponName = function() {
     if (this._weaponName) {
-        return weaponName;
+        return this._weaponName;
     }
     if (this.weapons()[0] && this.weapons()[0].meta["Weapon Name"]) {
         return this.this.weapons()[0].meta["Weapon Name"];
@@ -4092,7 +4215,7 @@ Game_Enemy.prototype.startAiIdle = function(canMove) {
 
 Game_Enemy.prototype.getWeaponName = function() {
     if (this._weaponName) {
-        return this.weaponName;
+        return this._weaponName;
     }
     if (this.enemy().meta["Weapon Name"]) {
         return this.enemy().meta["Weapon Name"];
@@ -4122,14 +4245,9 @@ Game_Party.prototype.initialize = function() {
     Kien.LMBS_Core.Game_Party_initialize.apply(this);
     this._lastBattleActorIndexLMBS = 0;
 };
-//-----------------------------------------------------------------------------
-// Game_Party
-//
-// The game object class for the party. Information such as gold and items is
-// included.
 
 Game_Party.prototype.battlerPosition = function(battler){
-	return 100 + this.battleMembers().indexOf(battler) * 80;
+    return 100 + this.battleMembers().indexOf(battler) * 80;
 }
 
 //-----------------------------------------------------------------------------
@@ -4269,18 +4387,10 @@ Window_BattleStatusLMBS.prototype.initialize = function() {
     this.width = w;
     this.height = h;
     this.y = y;
-    //this.backOpacity = 0;
     this.opacity = 0;
     this.createContents();
-    this.createSprites();
     this.refresh();
 };
-
-Window_BattleStatusLMBS.prototype.createSprites = function() {
-    for (var i = 0; i < this.maxItems(); i++) {
-
-    }
-}
 
 Window_BattleStatusLMBS.prototype.maxCols = function() {
     return 4;
@@ -4300,6 +4410,14 @@ Window_BattleStatusLMBS.prototype.drawGauge = function(x, y, width, rate, color1
 Window_BattleStatusLMBS.prototype.drawItem = function(index) {
     var actor = $gameParty.battleMembers()[index];
     this.clearItem(index);
+    var tw = Graphics.boxWidth / 4;
+    var tx = tw * index + 15;
+    this.drawText(actor.name(),tx,0,tw-30);
+    this.changeTextColor(this.hpGaugeColor1());
+    this.drawText(actor.hp.toString(),tx,0,tw-30,'right');
+    this.resetTextColor();
+    this.drawGauge(tx, this.lineHeight(), tw-30, actor.mpRate(), this.mpGaugeColor1(), this.mpGaugeColor2());
+    this.drawGauge(tx, this.lineHeight()+6, tw-30, actor.tpRate(), this.tpGaugeColor1(), this.tpGaugeColor2());
 }
 
 Window_BattleStatusLMBS.prototype.itemRect = function(index) {
@@ -4662,6 +4780,21 @@ Sprite_BattlerLMBS.prototype.currentBitmapCache = function() {
     }
 }
 
+Sprite_BattlerLMBS.prototype.getFrameProperty = function(pi) {
+    if (this.currentBitmapCache().json && this.currentBitmapCache().json.frames && this.currentBitmapCache().json.frames[pi]) {
+        return this.currentBitmapCache().json.frames[pi]
+    } else {
+        return {
+            "weaponX" : 0,
+            "weaponY" : 0,
+            "weaponAngle" : 0,
+            "weaponMirror" : false,
+            "weaponBack" : false,
+            "hideWeapon" : false
+        }
+    }
+}   
+
 Sprite_BattlerLMBS.prototype.update = function() {
     Sprite_Base.prototype.update.call(this);
     if (!SceneManager._scene.isBattlePaused()){
@@ -4723,51 +4856,33 @@ Sprite_BattlerLMBS.prototype.getCurrentLoop = function() {
 }
 
 Sprite_BattlerLMBS.prototype.getCurrentWeaponX = function() {
-    if (this.currentBitmapCache().json) {
-        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
-        return this.currentBitmapCache().json.frames[pi].weaponX;
-    }
-    return 0;
+    var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+    return this.getFrameProperty(pi).weaponX;
 }
 
 Sprite_BattlerLMBS.prototype.getCurrentWeaponY = function() {
-    if (this.currentBitmapCache().json) {
-        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
-        return this.currentBitmapCache().json.frames[pi].weaponY;
-    }
-    return 0;
+    var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+    return this.getFrameProperty(pi).weaponY;
 }
 
 Sprite_BattlerLMBS.prototype.getCurrentWeaponAngle = function() {
-    if (this.currentBitmapCache().json) {
-        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
-        return this.currentBitmapCache().json.frames[pi].weaponAngle;
-    }
-    return 0;
+    var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+    return this.getFrameProperty(pi).weaponAngle;
 }
 
 Sprite_BattlerLMBS.prototype.getCurrentWeaponHide = function() {
-    if (this.currentBitmapCache().json) {
-        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
-        return this.currentBitmapCache().json.frames[pi].hideWeapon;
-    }
-    return false;
+    var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+    return this.getFrameProperty(pi).hideWeapon;
 }
 
 Sprite_BattlerLMBS.prototype.getCurrentWeaponBack = function() {
-    if (this.currentBitmapCache().json) {
-        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
-        return this.currentBitmapCache().json.frames[pi].weaponBack;
-    }
-    return false;
+    var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+    return this.getFrameProperty(pi).weaponBack;
 }
 
 Sprite_BattlerLMBS.prototype.getCurrentWeaponMirror = function() {
-    if (this.currentBitmapCache().json) {
-        var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
-        return this.currentBitmapCache().json.frames[pi].weaponMirror;
-    }
-    return false;
+    var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);
+    return this.getFrameProperty(pi).weaponMirror;
 }
 
 Sprite_BattlerLMBS.prototype.getCurrentBoxWidth = function() {
@@ -5116,8 +5231,6 @@ function Sprite_EnemyLMBS() {
     this.initialize.apply(this, arguments);
 }
 
-
-
 Sprite_EnemyLMBS.prototype = Object.create(Sprite_BattlerLMBS.prototype);
 Sprite_EnemyLMBS.prototype.constructor = Sprite_EnemyLMBS;
 
@@ -5251,50 +5364,100 @@ Sprite_ProjectileLMBS.prototype.constructor = Sprite_ProjectileLMBS;
 
 Sprite_ProjectileLMBS.prototype.initialize = function(object, sprite){
     Sprite_Base.prototype.initialize.call(this);
-    var parameters = object.parameters;
-    if(parameters.match(/(.+)\,(\d+)\,(\d+)\,([+-]?\d+)\,([+-]?\d+)\,(\d+(?:\.\d+)?)\,(\d+)\,(\d+)\,(\d+)/)){
-        var filename = RegExp.$1;
-        var framenumber = parseInt(RegExp.$2);
-        var animationSpeed = parseInt(RegExp.$3);
-        var xspeed = parseInt(RegExp.$4);
-        var yspeed = parseInt(RegExp.$5);
-        var damagePer = parseFloat(RegExp.$6);
-        var knockbackx = parseInt(RegExp.$7);
-        var knockbacky = parseInt(RegExp.$8);
-        var knockbackdir = parseInt(RegExp.$9);
-    }
-    this._xspeed = xspeed || 3;
-    this._yspeed = yspeed || 0;
-    this._damagePer = damagePer || 1;
-    this._frameNumber = framenumber || 1;
-    this._animationSpeed = animationSpeed || 1;
-    this._bitmapName = filename || "";
-    this._knockbackx = knockbackx || 5;
-    this._knockbacky = knockbacky || 5;
-    this._knockbackdir = knockbackdir || 0;
-    this._direction = 0;
-    this._finish = false;
-    this._animationCount = 0;
-    this._hit = false;
-    this.visible = false;
-    this.updateBitmap();
-    this.x = sprite._battler.screenX();
-    this.y = sprite._battler.screenY();
+    // var parameters = object.parameters.split(",");
+    // var matches = [/([+-]?\d+)/,/([+-]?\d+)/,/(.+)/,
+    //                /(\d+)/,/(\d+)/,/([+-]?\d+)/,
+    //                /([+-]?\d+)/,/(\d+(?:\.\d+)?)/,/(\d+(?:\.\d+)?)/,
+    //                /(\d+(?:\.\d+)?)/,/(\d+)/];
+    // var names = ["dx","dy","filename",
+    //              "xspeed","yspeed","damagePer",
+    //              "knockbackx","knockbacky","knockbackdir",
+    //              "pierce"];
+    // var parser = [Kien.parseInt,Kien.parseInt,null,
+    //               parseFloat,parseFloat,parseFloat,
+    //               Kien.parseInt,Kien.parseInt,Kien.parseInt,
+    //               Kien.parseInt];
+    // var param = {};
+    // //                  dx,dy,filename,framenumber,animationSpeed,xspeed,yspeed,damagePercent,knockbackx,knockbacky,knockbackdir
+    // for (var i = 0; i < names.length; i++) {
+    //     if (!!parameters[i]) {
+    //         if (parameters[i].match(matches[i])) {
+    //             param[names[i]] = parser[i] ? parser[i](RegExp.$1) : RegExp.$1;
+    //         }
+    //     } else {
+    //         break;
+    //     }
+    // }
     this._userSprite = sprite;
+    this._isLoaded = false;
     this.anchor.x = 0.5;
     this.anchor.y = 1;
-    this.visible = true;
     this._battler = sprite._battler;
     this._direction = (this._battler._facing ? 1 : -1);
     this.scale.x = this._direction * (Kien.LMBS_Core.defaultFacing ? 1 : -1);
     this._action = new Game_Action(this._battler);
     this._action.setItemObject(object.item);
+    this._hittenEnemy = {};
+    var name = object.parameters;
+    var xhr = new XMLHttpRequest();
+    var url = "data/projectiles/" + name + ".json";
+    xhr.open('GET', url, false);
+    xhr.overrideMimeType('application/json');
+    xhr.onload = function() {
+        if (xhr.status < 400) {
+            obj = JSON.parse(xhr.responseText);
+            this.onJSONloaded(obj);
+        }
+    }.bind(this); 
+    xhr.onerror = function() {
+        DataManager._errorUrl = DataManager._errorUrl || url;
+    };
+    xhr.send();
+}
+
+Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
+    this._xspeed = param.xspeed || 3;
+    this._yspeed = param.yspeed || 0;
+    this._damagePer = param.damagePercent || 1;
+    this._bitmapName = param.filename || "";
+    this._knockbackx = param.knockbackx || 5;
+    this._knockbacky = param.knockbacky || 5;
+    this._knockbackdir = param.knockbackdir || 0;
+    this._pierce = param.pierce || 1;
+    this._dangle = param.angleFollowDirection || false;
+    this._invincibleFrames = param.invincibleFrames || 1;
+    this._frameNumber = 1;
+    this._animationSpeed = 4;
+    this._finish = false;
+    this._animationCount = 0;
+    this.updateBitmap();
+    this.x = this._userSprite._battler.screenX() + (param.dx ? param.dx : 0);
+    this.y = this._userSprite._battler.screenY() + (param.dy ? param.dy : 0);
     this._action._damagePercentage = this._damagePer;
+    this.visible = true;
+    this._isLoaded = true;
+    if (this._dangle) {
+        this.rotation = (new Kien.Vector2D(this._xspeed,-this._yspeed)).angleWithHorizon();
+    }
 }
 
 Sprite_ProjectileLMBS.prototype.updateBitmap = function() {
     if(!this.bimtap){
         this.bitmap = ImageManager.loadProjectile(this._bitmapName);
+        this.obtainImageProperty();
+    }
+}
+
+Sprite_ProjectileLMBS.prototype.obtainImageProperty = function() {
+    var arr = this._bitmapName.match(/(.+?)(?:\[(.*)\])?$/)
+    if (arr[2]) {
+        var params = arr[2];
+        if (params.match(/F(\d+)/)) {
+            this._frameNumber = parseInt(RegExp.$1,10);
+        }
+        if (params.match(/S(\d+)/)) {
+            this._animationSpeed = parseInt(RegExp.$1,10);
+        }
     }
 }
 
@@ -5303,7 +5466,7 @@ Sprite_ProjectileLMBS.prototype.removeLMBS = function() {
 }
 
 Sprite_ProjectileLMBS.prototype.update = function() {
-    if (!this._finish){
+    if (!this._finish && this._isLoaded){
         this.updatePosition();
         this.updateAnimation();
         this.updateDamage();
@@ -5328,10 +5491,12 @@ Sprite_ProjectileLMBS.prototype.updateAnimation = function() {
         this._animationCount = 0;
     }
     var fn = this._frameNumber;
-    var pn = Math.floor(this._animationCount / this._animationSpeed);
-    var pw = Math.floor(this.bitmap.width / fn);
-    var px = pw * pn;
-    this.setFrame(px,0,pw,this.bitmap.height);
+    if (fn > 1){
+        var pn = Math.floor(this._animationCount / this._animationSpeed);
+        var pw = Math.floor(this.bitmap.width / fn);
+        var px = pw * pn;
+        this.setFrame(px,0,pw,this.bitmap.height);
+    }
 }
 
 Sprite_ProjectileLMBS.prototype.updateDamage = function() {
@@ -5339,7 +5504,7 @@ Sprite_ProjectileLMBS.prototype.updateDamage = function() {
         var rect = this.boundRect();
         var memb = this._userSprite.oppositeMembers();
         memb.forEach(function(enemy){
-            if(!enemy._battler.isDead() && enemy.battlerBox().overlap(rect) && !this._hit){
+            if(!enemy._battler.isDead() && enemy.battlerBox().overlap(rect) && !this._finish && !this._hittenEnemy[enemy]){
                 this._action.apply(enemy._battler);
                 var dir = this._knockbackdir ? ( 5 - this._direction ) : ( 5 + this._direction );
                 if (this._action.isDamage() || this._action.isDrain()){
@@ -5348,12 +5513,20 @@ Sprite_ProjectileLMBS.prototype.updateDamage = function() {
                     this._battler.onHit(enemy._battler);
                 }
                 enemy._battler.startDamagePopup();
-                this._hit = true;
+                if (this._pierce > 0) {
+                    this._pierce--;
+                    if (this._pierce == 0) {
+                        this.visible = false;
+                        this._finish = true;
+                    }
+                }
+                this._hittenEnemy[enemy] = this._invincibleFrames;
             }
         }, this);
-        if(this._hit){
-            this.visible = false;
-            this._finish = true;
+    }
+    for (var e in this._hittenEnemy) {
+        if (this._hittenEnemy[e] > 0) {
+            this._hittenEnemy[e]--;
         }
     }
 }
@@ -5371,7 +5544,36 @@ Sprite_ProjectileLMBS.prototype.boundRect = function() {
 }
 
 Sprite_ProjectileLMBS.prototype.outOfBound = function() {
-    return (this.x < 0 || this.x > Kien.LMBS_Core.battleWidth || this.y < 0 || this.y > Graphics.height);
+    return (this.x < 0 || this.x > Kien.LMBS_Core.battleWidth || this.y > Graphics.height);
+}
+
+//-----------------------------------------------------------------------------
+// Sprite_GravityProjectileLMBS
+//
+// Projectile that affected by specified gravity.
+
+function Sprite_GravityProjectileLMBS() {
+    this.initialize.apply(this, arguments);
+}
+
+Sprite_GravityProjectileLMBS.prototype = Object.create(Sprite_ProjectileLMBS.prototype);
+Sprite_GravityProjectileLMBS.prototype.constructor = Sprite_GravityProjectileLMBS;
+
+Sprite_GravityProjectileLMBS.prototype.onJSONloaded = function(param) {
+    Sprite_ProjectileLMBS.prototype.onJSONloaded.call(this, param);
+    this._gravity = param.gravity || 0.2;
+}
+
+Sprite_GravityProjectileLMBS.prototype.updatePosition = function() {
+    Sprite_ProjectileLMBS.prototype.updatePosition.call(this);
+    this._yspeed -= this._gravity;
+    if (this._dangle) {
+        this.rotation = (new Kien.Vector2D(this._xspeed,-this._yspeed)).angleWithHorizon();
+    }
+}
+
+Sprite_GravityProjectileLMBS.prototype.outOfBound = function() {
+    return Sprite_ProjectileLMBS.prototype.outOfBound.call(this) || this.y > Kien.LMBS_Core.battleY;
 }
 
 
@@ -5393,12 +5595,14 @@ Sprite_AnimationLMBS.prototype.initialize = function(object, sprite){
     Sprite_Animation.prototype.initialize.call(this);
     var parameters = object.parameters;
     //                    origin,    dx,         dy,    jsoname   id,  delay,      mirror,          follow
-    if (parameters.match(/(.+?)\,([+-]?\d+)\,([+-]?\d+)\,(.+?)\,(\d+)\,(\d+)\,(true|false|null)\,(true|false)/)){
+    if (parameters.match(/(.+?)\,([+-]?\d+)\,([+-]?\d+)\,(.*?)\,(\d+)\,(\d+)\,(true|false|null)\,(true|false)/)){
         var origin = RegExp.$1;
         var dx = parseInt(RegExp.$2,10);
         var dy = parseInt(RegExp.$3,10);
         var filename = RegExp.$4;
-        var obj = Kien.LMBS_Core.createAnimationTimingFromName(filename);
+        if (filename.length > 0) {
+            var obj = Kien.LMBS_Core.createAnimationTimingFromName(filename);
+        }
         var animationId = parseInt(RegExp.$5,10);
         var delay = parseInt(RegExp.$6,10);
         var mirror = eval(RegExp.$7);
