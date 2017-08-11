@@ -1441,10 +1441,37 @@ Game_Action.prototype.isDeathStateRemoving = function() {
     }, this);
 }
 
-Game_Action.prototype.isStateRemoving = function() {
+Game_Action.prototype.isStateAffecting = function() {
     return this.item().effects.some(function(effect) {
-        return effect.code == Game_Action.EFFECT_REMOVE_STATE;
+        return [Game_Action.EFFECT_REMOVE_STATE, Game_Action.EFFECT_ADD_STATE, Game_Action.EFFECT_ADD_BUFF, Game_Action.EFFECT_REMOVE_DEBUFF].contains(effect.code);
     }, this);
+}
+
+Game_Action.prototype.getAllStateAffectingEffect = function() {
+    return this.item().effects.filter(function(effect) {
+        return [Game_Action.EFFECT_REMOVE_STATE, Game_Action.EFFECT_ADD_STATE, Game_Action.EFFECT_ADD_BUFF, Game_Action.EFFECT_REMOVE_DEBUFF].contains(effect.code);
+    }, this)
+}
+
+
+Game_Action.prototype.evaluateHealEffect = function(target) {
+    if (target.isDead() && !this.isDeathStateRemoving()) {
+        return -Infinity;
+    } 
+    return this.item().effects.reduce(function (sum, effect) {
+        if (effect.code == Game_ACTION.EFFECT_RECOVER_HP) {
+            return sum + effect.value1 + (effect.value2 / target.mhp);
+        } else {
+            return sum;
+        }
+    }, 0)
+};
+
+Game_Action.prototype.isTargetAvailable = function(target) {
+    if (target.isDead() && !this.isForDeadFriend()) {
+        return false;
+    }
+    return true;
 }
 
 //-----------------------------------------------------------------------------
@@ -1976,6 +2003,7 @@ Game_Battler.prototype.initMembers = function(){
     this._projectiles = []; // Projectile objects created by this battler.
     this._motionFall = true; // Allowed falling in skill motion
     this._target = null; // targeting battler
+    this._originalTarget = undefined; // temporary storage to store original target when used those skills that not targeting enemy.
     this._guard = false; // Is guarding. when guarding, damage will reduced and knockback will not take place.
     this._guardDuration = 0; // length of guard left, used for AI
     this._moveTarget = 0 // X coordinate of target position. Y will only change when jumping.
@@ -2495,6 +2523,10 @@ Game_Battler.prototype.endMotion = function() {
     this._motionFall = true;
     this._rotation = 0;
     this._hitStopLength = 15;
+    if (this._originalTarget !== undefined) {
+        this._target = this._originalTarget;
+        this._originalTarget = undefined;
+    }
     this.clearDamage();
     this.clearActions();
 }
@@ -2537,6 +2569,7 @@ Game_Battler.prototype.useSkill = function(skillId){
         action.setSkill(skillId);
         this.setAction(0,action);
         this.loadMotionFromObject(skill);
+        this.chooseCorrectTarget();
         BattleManager.refreshStatus();
     }
 }
@@ -2550,6 +2583,7 @@ Game_Battler.prototype.forceSkill = function(skillId){
         action.setSkill(skillId);
         this.setAction(0,action);
         this.loadMotionFromObject(skill);
+        this.chooseCorrectTarget();
         BattleManager.refreshStatus();
     }
 }
@@ -2562,6 +2596,7 @@ Game_Battler.prototype.useItemLMBS = function(itemId){
         action.setItem(itemId);
         this.setAction(0,action);
         this.loadMotionFromObject(item);
+        this.chooseCorrectTarget();
         BattleManager.refreshStatus();
     }
 }
@@ -2574,7 +2609,72 @@ Game_Battler.prototype.forceItemLMBS = function(itemId){
         action.setItem(itemId);
         this.setAction(0,action);
         this.loadMotionFromObject(item);
+        this.chooseCorrectTarget();
         BattleManager.refreshStatus();
+    }
+}
+
+Game_Battler.prototype.chooseCorrectTarget = function() {
+    if (!this._target) {
+        this._originalTarget = null;
+        if (this._actions[0].isForOpponent()) {
+            this.chooseEnemyTarget();
+        } else if (this._actions[0].isForUser()) {
+            this._target = this;
+        } else if (this._actions[0].isForFriend()) {
+            this.chooseFriendTarget();
+        }
+    } else if (this._actions[0].isForUser() && this._target !== this) {
+        this._originalTarget = this._target;
+        this._target = this;
+    } else if (this._actions[0].isForOpponent() && !this.opponentsUnit().members().contains(this._target)) {
+        this._originalTarget = this._target;
+        this.chooseEnemyTarget();
+    } else if (this._actions[0].isForFriend() && !this.friendsUnit().members().contains(this._target)) {
+        this._originalTarget = this._target;
+        this.chooseFriendTarget();
+    }
+}
+
+Game_Battler.prototype.chooseEnemyTarget = function() {
+    this._target = this.opponentsUnit().members()[0];
+}
+
+Game_Battler.prototype.chooseFriendTarget = function() {
+    var action = this._actions[0];
+    if (action.isDeathStateRemoving()) {
+        this._target = this.friendsUnit().randomDeadTarget();
+    }
+    if (!this._target && action.isStateRemoving()) {
+        var effects = action.getAllStateAffectingEffect();
+        var members = this.friendsUnit().getStateAffectableMembers(effects);
+        if (members.length > 0) {
+            this._target = members[0];
+        }
+    }
+    if (!this._target && action.isHpHeal()) {
+        var scores = [];
+        var indices = [];
+        var members = this.friendsUnit().members();
+        members.forEach(function(battler, index) {
+            indices.push(index);
+            scores[index] = action.evaluateWithTarget(battler) + action.evaluateHealEffect(battler);
+        });
+        indices.filter(function(a) {
+            return scores[a] > 0;
+        }).sort(function(a,b) {
+            var ra = scores[a];
+            var rb = scores[b];
+            if (ra >= 1 && rb >= 1) {
+                return members[a].hpRate() - members[b].hpRate();
+            } else {
+                return rb - ra;
+            }
+        })
+        this._target = members[indices[0]];
+    }
+    if (!this._target) {
+        this._target = this.friendsUnit().randomTarget();
     }
 }
 
@@ -3607,16 +3707,20 @@ Game_Actor.prototype.updateInputSkill = function() {
 }
 
 Game_Actor.prototype.updateInputTarget = function() {
-    if(this._inputData.reservedInput ==='cancel' && this.isInputAvailable()) {
-        this._inputData.reservedInput = null;
-        this._inputData.reservedInputDir = 0;
-        var d4 = Input.dir4;
-        if(d4 == 4){
-            d4 = (this._facing ? 4 : 6)
-        } else if (d4 == 6){
-            d4 = (this._facing ? 6 : 4)
+    if (Input.isTriggered("LMBSprevioustarget")) {
+        if (this._target) {
+            var temp = this._target;
+            do  {
+                this._target = BattleManager.previousTarget(this._target);
+            } while (!(this._actions[0].isTargetAvailable(this._target) || this._target === temp))
         }
-        this.useRegistedSkill(d4);
+    } else if (Input.isTriggered("LMBSnexttarget")) {
+        if (this._target) {
+            var temp = this._target;
+            do  {
+                this._target = BattleManager.nextTarget(this._target);
+            } while (!(this._actions[0].isTargetAvailable(this._target) || this._target === temp))
+        }
     }
 }
 
@@ -3741,10 +3845,15 @@ Game_Actor.prototype.chooseTarget = function() {
         action.setSkill(this._aiData.readySkill);
         if (action.isForOpponent()) {
             this.chooseEnemyTarget();
+        } else if (action.isForUser()) {
+            this._target = this;
         } else if (action.isForDeadFriend()) {
             this._target = this.friendsUnit().randomDeadTarget();
         } else if (action.isForFriend()) {
+            var temp = this._actions[0];
+            this._actions[0] = action;
             this.chooseFriendTarget();
+            this._actions[0] = temp;
         }
     } else {
         this.chooseEnemyTarget();
@@ -3768,18 +3877,6 @@ Game_Actor.prototype.chooseEnemyTarget = function() {
     }
     if (this._target == null) {
         this.chooseNearestTarget();
-    }
-}
-
-Game_Actor.prototype.chooseFriendTarget = function() {
-    var action = new Game_Action(this);
-    action.setSkill(this._aiData.readySkill);
-    if (action.isDeathStateRemoving()) {
-        this._target = this.friendsUnit().randomDeadTarget();
-    }
-    if (!this._target && action.isStateRemoving()) {
-        var members = this.friendsUnit().battleMembers();
-        var states = 
     }
 }
 
@@ -4028,6 +4125,9 @@ Game_Enemy.prototype.loadTargetType = function(string) {
 }
 
 Game_Enemy.prototype.chooseTarget = function() {
+    this.chooseEnemyTarget();
+}
+Game_Enemy.prototype.chooseEnemyTarget = function() {
     this._target = null;
     switch (this._aiData.targetType){
         case "nearest":
@@ -4216,6 +4316,52 @@ Game_Unit.prototype.update = function(){
     this.members().forEach(function(battler){
         battler.update();
     })
+}
+
+Game_Unit.prototype.getStateAffectableMembers = function(effects) {
+	var scores = [];
+	var indices = [];
+	var members = this.members();
+	members.forEach(function(battler, index) {
+		scores[index] = this.getStateAffectableScore(effects, battler);
+		indices.push(index);
+	}, this);
+	return indices.filter(function(a) {
+		return scores[a] > 0;
+	}).sort(function(a, b) {
+		return scores[b] - scores[a];
+	}).map(function(a) {
+		return members[a];
+	})
+}
+
+Game_Unit.prototype.getStateAffectableScore = function(effects, battler) {
+	var score = 0;
+	effects.forEach(function(effect) {
+		switch (effect.code) {
+			case Game_Action.EFFECT_REMOVE_STATE:
+			if (battler.isStateAffected(effect.dataId)) {
+				score += $dataStates[effect.dataId].priority;
+			}
+			break;
+			case Game_Action.EFFECT_ADD_STATE:
+			if (!battler.isStateAffected(effect.dataId)) {
+				score += $dataStates[effect.dataId].priority;
+			}
+			break;
+			case Game_Action.EFFECT_ADD_BUFF:
+			if (!battler.isMaxBuffAffected(effect.dataId)) {
+				score += 50;
+			}
+			break;
+			case Game_Action.EFFECT_REMOVE_DEBUFF:
+			if (battler.isDebuffAffected(effect.dataId)) {
+				score += 50;
+			}
+			break;
+		}
+	})
+	return score;
 }
 
 //-----------------------------------------------------------------------------

@@ -61,8 +61,35 @@ Game_Action.prototype.isDeathStateRemoving = function() {
     }, this);
 }
 
-Game_Action.prototype.isStateRemoving = function() {
+Game_Action.prototype.isStateAffecting = function() {
     return this.item().effects.some(function(effect) {
-        return effect.code == Game_Action.EFFECT_REMOVE_STATE;
+        return [Game_Action.EFFECT_REMOVE_STATE, Game_Action.EFFECT_ADD_STATE, Game_Action.EFFECT_ADD_BUFF, Game_Action.EFFECT_REMOVE_DEBUFF].contains(effect.code);
     }, this);
+}
+
+Game_Action.prototype.getAllStateAffectingEffect = function() {
+    return this.item().effects.filter(function(effect) {
+        return [Game_Action.EFFECT_REMOVE_STATE, Game_Action.EFFECT_ADD_STATE, Game_Action.EFFECT_ADD_BUFF, Game_Action.EFFECT_REMOVE_DEBUFF].contains(effect.code);
+    }, this)
+}
+
+
+Game_Action.prototype.evaluateHealEffect = function(target) {
+    if (target.isDead() && !this.isDeathStateRemoving()) {
+        return -Infinity;
+    } 
+    return this.item().effects.reduce(function (sum, effect) {
+        if (effect.code == Game_ACTION.EFFECT_RECOVER_HP) {
+            return sum + effect.value1 + (effect.value2 / target.mhp);
+        } else {
+            return sum;
+        }
+    }, 0)
+};
+
+Game_Action.prototype.isTargetAvailable = function(target) {
+    if (target.isDead() && !this.isForDeadFriend()) {
+        return false;
+    }
+    return true;
 }

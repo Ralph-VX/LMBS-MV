@@ -81,6 +81,9 @@ Game_Enemy.prototype.loadTargetType = function(string) {
 }
 
 Game_Enemy.prototype.chooseTarget = function() {
+    this.chooseEnemyTarget();
+}
+Game_Enemy.prototype.chooseEnemyTarget = function() {
     this._target = null;
     switch (this._aiData.targetType){
         case "nearest":

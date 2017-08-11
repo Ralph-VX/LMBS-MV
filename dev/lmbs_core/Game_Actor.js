@@ -247,16 +247,20 @@ Game_Actor.prototype.updateInputSkill = function() {
 }
 
 Game_Actor.prototype.updateInputTarget = function() {
-    if(this._inputData.reservedInput ==='cancel' && this.isInputAvailable()) {
-        this._inputData.reservedInput = null;
-        this._inputData.reservedInputDir = 0;
-        var d4 = Input.dir4;
-        if(d4 == 4){
-            d4 = (this._facing ? 4 : 6)
-        } else if (d4 == 6){
-            d4 = (this._facing ? 6 : 4)
+    if (Input.isTriggered("LMBSprevioustarget")) {
+        if (this._target) {
+            var temp = this._target;
+            do  {
+                this._target = BattleManager.previousTarget(this._target);
+            } while (!(this._actions[0].isTargetAvailable(this._target) || this._target === temp))
         }
-        this.useRegistedSkill(d4);
+    } else if (Input.isTriggered("LMBSnexttarget")) {
+        if (this._target) {
+            var temp = this._target;
+            do  {
+                this._target = BattleManager.nextTarget(this._target);
+            } while (!(this._actions[0].isTargetAvailable(this._target) || this._target === temp))
+        }
     }
 }
 
@@ -381,10 +385,15 @@ Game_Actor.prototype.chooseTarget = function() {
         action.setSkill(this._aiData.readySkill);
         if (action.isForOpponent()) {
             this.chooseEnemyTarget();
+        } else if (action.isForUser()) {
+            this._target = this;
         } else if (action.isForDeadFriend()) {
             this._target = this.friendsUnit().randomDeadTarget();
         } else if (action.isForFriend()) {
+            var temp = this._actions[0];
+            this._actions[0] = action;
             this.chooseFriendTarget();
+            this._actions[0] = temp;
         }
     } else {
         this.chooseEnemyTarget();
@@ -408,18 +417,6 @@ Game_Actor.prototype.chooseEnemyTarget = function() {
     }
     if (this._target == null) {
         this.chooseNearestTarget();
-    }
-}
-
-Game_Actor.prototype.chooseFriendTarget = function() {
-    var action = new Game_Action(this);
-    action.setSkill(this._aiData.readySkill);
-    if (action.isDeathStateRemoving()) {
-        this._target = this.friendsUnit().randomDeadTarget();
-    }
-    if (!this._target && action.isStateRemoving()) {
-        var members = this.friendsUnit().battleMembers();
-        var states = 
     }
 }
 
