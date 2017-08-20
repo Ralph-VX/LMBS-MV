@@ -14,6 +14,7 @@ Game_Actor.prototype.initMembers = function() {
     this._inputData.reservedInput = null;
     this._inputData.reservedInputDir = 0;
     this._inputData.jumpInputDur = 0;
+    this._inputData.inputKeepTime = -1;
 }
 
 Kien.LMBS_Core.Game_Actor_setup = Game_Actor.prototype.setup;
@@ -202,16 +203,26 @@ Game_Actor.prototype.update = function() {
 }
 
 Game_Actor.prototype.updateInputData = function() {
+    if (this._inputData.reservedInput != null && this._inputData.inputKeepTime > 0) {
+        this._inputData.inputKeepTime--;
+        if (this._inputData.inputKeepTime == 0) {
+            this._inputData.reservedInput = null;
+            this._inputData.inputKeepTime = -1;
+        }
+    }
     if (this.isKnockback()) {
         this._inputData.reservedInput = null;
     } else if (Input.isTriggered('ok')) {
         this._inputData.reservedInput = 'ok';
         this._inputData.reservedInputDir = Input.dir4;
+        this._inputData.inputKeepTime = Kien.LMBS_Core.inputKeepTime;
     } else if (Input.isTriggered('cancel')) {
         this._inputData.reservedInput = 'cancel';
         this._inputData.reservedInputDir = Input.dir4;
+        this._inputData.inputKeepTime = Kien.LMBS_Core.inputKeepTime;
     } else if (Input.isPressed('LMBSguard')) {
         this._inputData.reservedInput = 'LMBSguard';
+        this._inputData.inputKeepTime = Kien.LMBS_Core.inputKeepTime;
     }
 }
 
@@ -221,6 +232,7 @@ Game_Actor.prototype.updateInputGuard = function() {
         this._guardDuration = 2;
         this._inputData.reservedInput = null;
         this._inputData.reservedInputDir = 0;
+        this._inputData.inputKeepTime = -1;
     }
 }
 
@@ -229,6 +241,7 @@ Game_Actor.prototype.updateInputAttack = function() {
         this.useNormalAttack(Input.dir4);
         this._inputData.reservedInput = null;
         this._inputData.reservedInputDir = 0;
+        this._inputData.inputKeepTime = -1;
     }
 }
 
@@ -236,6 +249,7 @@ Game_Actor.prototype.updateInputSkill = function() {
     if(this._inputData.reservedInput ==='cancel' && this.isInputAvailable()) {
         this._inputData.reservedInput = null;
         this._inputData.reservedInputDir = 0;
+        this._inputData.inputKeepTime = -1;
         var d4 = Input.dir4;
         if(d4 == 4){
             d4 = (this._facing ? 4 : 6)
@@ -252,14 +266,14 @@ Game_Actor.prototype.updateInputTarget = function() {
             var temp = this._target;
             do  {
                 this._target = BattleManager.previousTarget(this._target);
-            } while (!(this._actions[0].isTargetAvailable(this._target) || this._target === temp))
+            } while (!(this.isTargetAvailable(this._target) || this._target === temp));
         }
     } else if (Input.isTriggered("LMBSnexttarget")) {
         if (this._target) {
             var temp = this._target;
             do  {
                 this._target = BattleManager.nextTarget(this._target);
-            } while (!(this._actions[0].isTargetAvailable(this._target) || this._target === temp))
+            } while (!(this.isTargetAvailable(this._target) || this._target === temp))
         }
     }
 }
@@ -329,6 +343,14 @@ Game_Actor.prototype.isAiForcing = function() {
     return this._aiData.forceAi;
 }
 
+Game_Actor.prototype.isTargetAvailable = function() {
+    if (this._actions[0]) {
+        return this._actions[0].isTargetAvailable(this._target);
+    } else {
+        return true;
+    }
+}
+
 Game_Actor.prototype.magicSkills = function() {
     return this.skills().filter(function(skill) {
         return skill.hitType === Game_Action.HITTYPE_MAGICAL
@@ -382,7 +404,7 @@ Game_Actor.prototype.chooseTarget = function() {
     this._target = null;
     if (this._aiData.readySkill) {
         var action = new Game_Action(this);
-        action.setSkill(this._aiData.readySkill);
+        action.setSkill(this._aiData.readySkill.id);
         if (action.isForOpponent()) {
             this.chooseEnemyTarget();
         } else if (action.isForUser()) {

@@ -25,6 +25,9 @@ Kien.LMBS_Core.skillTypeName = Kien.LMBS_Core.parameters["Skill Set Name"];
 Kien.LMBS_Core.skillSetRightLeft = eval(Kien.LMBS_Core.parameters["Skill Set Left Right Act Same"]);
 Kien.LMBS_Core.inputDelay = parseInt(Kien.LMBS_Core.parameters["Delay for jump"]);
 Kien.LMBS_Core.defaultBattleEventPause = parseInt(Kien.LMBS_Core.parameters["Pause Game While Event By Default"]);
+Kien.LMBS_Core.inputKeepTime = parseInt(Kien.LMBS_Core.parameters["Input Keep Time"]);
+Kien.LMBS_Core.cursorAnimationSpeed = parseInt(Kien.LMBS_Core.parameters["Cursor Animation Speed"]);
+Kien.LMBS_Core.cursorFrameCount = parseInt(Kien.LMBS_Core.parameters["Cursor Frame Count"]);
 Kien.LMBS_Core.gaurdKey = parseInt(Kien.LMBS_Core.parameters["Guard Key"]);
 Kien.LMBS_Core.previousTargetKey = parseInt(Kien.LMBS_Core.parameters["Previous Target Key"]);
 Kien.LMBS_Core.nextTargetKey = parseInt(Kien.LMBS_Core.parameters["Next Target Key"]);
@@ -556,4 +559,12 @@ Kien.LMBS_Core.loadMotionDescriptorClass = function(obj) {
         return eval(obj.meta["Motion Descriptor"]);
     }
     return DefaultMotionDescriptor;
+}
+
+Kien.LMBS_Core.loadJSONEvaluableValue = function(value, thisObj) {
+    if (typeof value === "string") {
+        return (function(){return eval(value)}).call(thisObj);
+    } else {
+        return value;
+    }
 }

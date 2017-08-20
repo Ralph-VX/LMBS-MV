@@ -51,7 +51,7 @@ Game_Action.prototype.hasHpRecoverEffect = function() {
     }, this);
 };
 
-Game_Action.prototype.isEffectHeal = function() {
+Game_Action.prototype.isEffectHeal = function(effect) {
     return (effect.value1 > 0 && effect.value2 >= 0) || (effect.value1 >= 0 && effect.value2 > 0);;
 }
 
@@ -79,7 +79,7 @@ Game_Action.prototype.evaluateHealEffect = function(target) {
         return -Infinity;
     } 
     return this.item().effects.reduce(function (sum, effect) {
-        if (effect.code == Game_ACTION.EFFECT_RECOVER_HP) {
+        if (effect.code == Game_Action.EFFECT_RECOVER_HP) {
             return sum + effect.value1 + (effect.value2 / target.mhp);
         } else {
             return sum;
@@ -88,8 +88,10 @@ Game_Action.prototype.evaluateHealEffect = function(target) {
 };
 
 Game_Action.prototype.isTargetAvailable = function(target) {
-    if (target.isDead() && !this.isForDeadFriend()) {
-        return false;
+    if (target.isDead()) {
+        if (!this.isForDeadFriend()) {
+            return false;
+        }
     }
     return true;
 }

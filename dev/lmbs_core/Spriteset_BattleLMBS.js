@@ -23,6 +23,7 @@ Spriteset_BattleLMBS.prototype.createLowerLayer = function() {
 
 Spriteset_BattleLMBS.prototype.createUpperLayer = function() {
     Spriteset_Base.prototype.createUpperLayer.call(this);
+    this.createTargettingCursor();
 };
 
 Spriteset_BattleLMBS.prototype.createBackground = function() {
@@ -47,6 +48,12 @@ Spriteset_BattleLMBS.prototype.createBattlerSprite = function() {
 
 }
 
+Spriteset_BattleLMBS.prototype.createTargettingCursor = function() {
+    this._targetCursor = new Sprite_TargetArrow();
+    this._targetCursorTargetSprite = null;
+    this.addChild(this._targetCursor);
+}
+
 Spriteset_BattleLMBS.prototype.onStart = function() {
     this._Actors.forEach(function(sprite) {
         sprite.onStart();
@@ -69,6 +76,37 @@ Spriteset_BattleLMBS.prototype.findSprite = function(battler){
         return sprite;
     }
     return null;
+}
+
+Spriteset_BattleLMBS.prototype.update = function() {
+    Spriteset_Base.prototype.update.call(this);
+    this.updateTargetArrow();
+}
+
+Spriteset_BattleLMBS.prototype.updateTargetArrow = function() {
+    if (BattleManager.actor()) {
+        var target = BattleManager.actor()._target;
+        if (target) {
+            if (target.isActor()) {
+                this._targetCursorTargetSprite = this._Actors.filter(function(sprite) { 
+                    return sprite._battler == target; 
+                })[0];
+            } else {
+                this._targetCursorTargetSprite = this._Enemies.filter(function(sprite) { 
+                    return sprite._battler == target; 
+                })[0];
+            }
+        }
+    } else {
+        this._targetCursorTargetSprite = null;
+    }
+    if (this._targetCursorTargetSprite) {
+        this._targetCursor.x = this._targetCursorTargetSprite.x;
+        this._targetCursor.y = this._targetCursorTargetSprite.getSpriteTop();
+        this._targetCursor.visible = !this._targetCursorTargetSprite._battler.isDead();
+    } else {
+        this._targetCursor.visible = false;
+    }
 }
 
 Spriteset_BattleLMBS.prototype.updatePosition = function() {

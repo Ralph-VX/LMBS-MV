@@ -122,6 +122,18 @@ Kien.LMBS_Core = {};
  * plugin command.
  * @default false
  *
+ * @param Input Keep Time
+ * @desc Time the input from player will be keep for triggering next action.
+ * @default 10
+ *
+ * @param Cursor Animation Speed
+ * @desc Speed of cursor animation of Targetting Cursor.
+ * @default 8
+ *
+ * @param Cursor Frame Count
+ * @desc Amount of frame of Targetting Cursor.
+ * @default 4
+ *
  * @param ===Key Settings===
  * @desc 
  * @default 

@@ -122,6 +122,18 @@ Kien.LMBS_Core = {};
  * plugin command.
  * @default false
  *
+ * @param Input Keep Time
+ * @desc Time the input from player will be keep for triggering next action.
+ * @default 10
+ *
+ * @param Cursor Animation Speed
+ * @desc Speed of cursor animation of Targetting Cursor.
+ * @default 8
+ *
+ * @param Cursor Frame Count
+ * @desc Amount of frame of Targetting Cursor.
+ * @default 4
+ *
  * @param ===Key Settings===
  * @desc 
  * @default 
@@ -410,6 +422,9 @@ Kien.LMBS_Core.skillTypeName = Kien.LMBS_Core.parameters["Skill Set Name"];
 Kien.LMBS_Core.skillSetRightLeft = eval(Kien.LMBS_Core.parameters["Skill Set Left Right Act Same"]);
 Kien.LMBS_Core.inputDelay = parseInt(Kien.LMBS_Core.parameters["Delay for jump"]);
 Kien.LMBS_Core.defaultBattleEventPause = parseInt(Kien.LMBS_Core.parameters["Pause Game While Event By Default"]);
+Kien.LMBS_Core.inputKeepTime = parseInt(Kien.LMBS_Core.parameters["Input Keep Time"]);
+Kien.LMBS_Core.cursorAnimationSpeed = parseInt(Kien.LMBS_Core.parameters["Cursor Animation Speed"]);
+Kien.LMBS_Core.cursorFrameCount = parseInt(Kien.LMBS_Core.parameters["Cursor Frame Count"]);
 Kien.LMBS_Core.gaurdKey = parseInt(Kien.LMBS_Core.parameters["Guard Key"]);
 Kien.LMBS_Core.previousTargetKey = parseInt(Kien.LMBS_Core.parameters["Previous Target Key"]);
 Kien.LMBS_Core.nextTargetKey = parseInt(Kien.LMBS_Core.parameters["Next Target Key"]);
@@ -943,6 +958,15 @@ Kien.LMBS_Core.loadMotionDescriptorClass = function(obj) {
     return DefaultMotionDescriptor;
 }
 
+Kien.LMBS_Core.loadJSONEvaluableValue = function(value, thisObj) {
+    if (typeof value === "string") {
+        return (function(){return eval(value)}).call(thisObj);
+    } else {
+        return value;
+    }
+}
+
+
 //-----------------------------------------------------------------------------
 // Array
 //
@@ -1431,7 +1455,7 @@ Game_Action.prototype.hasHpRecoverEffect = function() {
     }, this);
 };
 
-Game_Action.prototype.isEffectHeal = function() {
+Game_Action.prototype.isEffectHeal = function(effect) {
     return (effect.value1 > 0 && effect.value2 >= 0) || (effect.value1 >= 0 && effect.value2 > 0);;
 }
 
@@ -1459,7 +1483,7 @@ Game_Action.prototype.evaluateHealEffect = function(target) {
         return -Infinity;
     } 
     return this.item().effects.reduce(function (sum, effect) {
-        if (effect.code == Game_ACTION.EFFECT_RECOVER_HP) {
+        if (effect.code == Game_Action.EFFECT_RECOVER_HP) {
             return sum + effect.value1 + (effect.value2 / target.mhp);
         } else {
             return sum;
@@ -1468,8 +1492,10 @@ Game_Action.prototype.evaluateHealEffect = function(target) {
 };
 
 Game_Action.prototype.isTargetAvailable = function(target) {
-    if (target.isDead() && !this.isForDeadFriend()) {
-        return false;
+    if (target.isDead()) {
+        if (!this.isForDeadFriend()) {
+            return false;
+        }
     }
     return true;
 }
@@ -2632,8 +2658,10 @@ Game_Battler.prototype.chooseCorrectTarget = function() {
         this.chooseEnemyTarget();
     } else if (this._actions[0].isForFriend() && !this.friendsUnit().members().contains(this._target)) {
         this._originalTarget = this._target;
+        this._target = null;
         this.chooseFriendTarget();
     }
+
 }
 
 Game_Battler.prototype.chooseEnemyTarget = function() {
@@ -2645,7 +2673,7 @@ Game_Battler.prototype.chooseFriendTarget = function() {
     if (action.isDeathStateRemoving()) {
         this._target = this.friendsUnit().randomDeadTarget();
     }
-    if (!this._target && action.isStateRemoving()) {
+    if (!this._target && action.isStateAffecting()) {
         var effects = action.getAllStateAffectingEffect();
         var members = this.friendsUnit().getStateAffectableMembers(effects);
         if (members.length > 0) {
@@ -2661,7 +2689,7 @@ Game_Battler.prototype.chooseFriendTarget = function() {
             scores[index] = action.evaluateWithTarget(battler) + action.evaluateHealEffect(battler);
         });
         indices.filter(function(a) {
-            return scores[a] > 0;
+            return scores[a] >= 0;
         }).sort(function(a,b) {
             var ra = scores[a];
             var rb = scores[b];
@@ -3221,7 +3249,7 @@ Game_LMBSAiActorBase.prototype.update = function() {
         // When chosen the normal attack, or there have no magic skills.
         this._battler._aiData.actionType = 'attack';
         this._battler._aiData.readySkill = this._battler.chooseAvailableSkills(this._battler._availableAttacks).sample();
-        if(this._battler._aiData.readySkill) {
+        if (this._battler._aiData.readySkill) {
             this._battler.chooseTarget();
             if (this._battler._target) {
                 var dist = Kien.LMBS_Core.getSkillRange(this._battler._aiData.readySkill);
@@ -3474,6 +3502,7 @@ Game_Actor.prototype.initMembers = function() {
     this._inputData.reservedInput = null;
     this._inputData.reservedInputDir = 0;
     this._inputData.jumpInputDur = 0;
+    this._inputData.inputKeepTime = -1;
 }
 
 Kien.LMBS_Core.Game_Actor_setup = Game_Actor.prototype.setup;
@@ -3662,16 +3691,26 @@ Game_Actor.prototype.update = function() {
 }
 
 Game_Actor.prototype.updateInputData = function() {
+    if (this._inputData.reservedInput != null && this._inputData.inputKeepTime > 0) {
+        this._inputData.inputKeepTime--;
+        if (this._inputData.inputKeepTime == 0) {
+            this._inputData.reservedInput = null;
+            this._inputData.inputKeepTime = -1;
+        }
+    }
     if (this.isKnockback()) {
         this._inputData.reservedInput = null;
     } else if (Input.isTriggered('ok')) {
         this._inputData.reservedInput = 'ok';
         this._inputData.reservedInputDir = Input.dir4;
+        this._inputData.inputKeepTime = Kien.LMBS_Core.inputKeepTime;
     } else if (Input.isTriggered('cancel')) {
         this._inputData.reservedInput = 'cancel';
         this._inputData.reservedInputDir = Input.dir4;
+        this._inputData.inputKeepTime = Kien.LMBS_Core.inputKeepTime;
     } else if (Input.isPressed('LMBSguard')) {
         this._inputData.reservedInput = 'LMBSguard';
+        this._inputData.inputKeepTime = Kien.LMBS_Core.inputKeepTime;
     }
 }
 
@@ -3681,6 +3720,7 @@ Game_Actor.prototype.updateInputGuard = function() {
         this._guardDuration = 2;
         this._inputData.reservedInput = null;
         this._inputData.reservedInputDir = 0;
+        this._inputData.inputKeepTime = -1;
     }
 }
 
@@ -3689,6 +3729,7 @@ Game_Actor.prototype.updateInputAttack = function() {
         this.useNormalAttack(Input.dir4);
         this._inputData.reservedInput = null;
         this._inputData.reservedInputDir = 0;
+        this._inputData.inputKeepTime = -1;
     }
 }
 
@@ -3696,6 +3737,7 @@ Game_Actor.prototype.updateInputSkill = function() {
     if(this._inputData.reservedInput ==='cancel' && this.isInputAvailable()) {
         this._inputData.reservedInput = null;
         this._inputData.reservedInputDir = 0;
+        this._inputData.inputKeepTime = -1;
         var d4 = Input.dir4;
         if(d4 == 4){
             d4 = (this._facing ? 4 : 6)
@@ -3712,14 +3754,14 @@ Game_Actor.prototype.updateInputTarget = function() {
             var temp = this._target;
             do  {
                 this._target = BattleManager.previousTarget(this._target);
-            } while (!(this._actions[0].isTargetAvailable(this._target) || this._target === temp))
+            } while (!(this.isTargetAvailable(this._target) || this._target === temp));
         }
     } else if (Input.isTriggered("LMBSnexttarget")) {
         if (this._target) {
             var temp = this._target;
             do  {
                 this._target = BattleManager.nextTarget(this._target);
-            } while (!(this._actions[0].isTargetAvailable(this._target) || this._target === temp))
+            } while (!(this.isTargetAvailable(this._target) || this._target === temp))
         }
     }
 }
@@ -3789,6 +3831,14 @@ Game_Actor.prototype.isAiForcing = function() {
     return this._aiData.forceAi;
 }
 
+Game_Actor.prototype.isTargetAvailable = function() {
+    if (this._actions[0]) {
+        return this._actions[0].isTargetAvailable(this._target);
+    } else {
+        return true;
+    }
+}
+
 Game_Actor.prototype.magicSkills = function() {
     return this.skills().filter(function(skill) {
         return skill.hitType === Game_Action.HITTYPE_MAGICAL
@@ -3842,7 +3892,7 @@ Game_Actor.prototype.chooseTarget = function() {
     this._target = null;
     if (this._aiData.readySkill) {
         var action = new Game_Action(this);
-        action.setSkill(this._aiData.readySkill);
+        action.setSkill(this._aiData.readySkill.id);
         if (action.isForOpponent()) {
             this.chooseEnemyTarget();
         } else if (action.isForUser()) {
@@ -4767,6 +4817,55 @@ Window_BattleMessage.prototype.updateTone = function() {
 };
 
 //-----------------------------------------------------------------------------
+// Sprite_TargetArrow
+//
+// Sprite use to show which battler is player targetting.
+
+function Sprite_TargetArrow() {
+    this.initialize.apply(this, arguments);
+}
+ 
+ 
+Sprite_TargetArrow.prototype = Object.create(Sprite_Base.prototype);
+Sprite_TargetArrow.prototype.constructor = Sprite_TargetArrow;
+
+Sprite_TargetArrow.prototype.initialize = function() {
+    Sprite_Base.prototype.initialize.call(this);
+    this.animationCount = 0;
+    this.animationSpeed = Kien.LMBS_Core.cursorAnimationSpeed;
+    this.isAnimating = true;
+    this.frameNumber = 0;
+    this.anchor.y = 1;
+    this.anchor.x = 0.5;
+    this.createBitmap();
+}
+
+Sprite_TargetArrow.prototype.createBitmap = function() {
+    this.bitmap = ImageManager.loadSystem('cursorLMBS');
+}
+
+Sprite_TargetArrow.prototype.update = function() {
+    if (this.isAnimating) {
+        this.updateAnimation();
+    }
+    this.updateFrame();
+}
+
+Sprite_TargetArrow.prototype.updateAnimation = function() {
+    if (++this.animationCount >= this.animationSpeed) {
+        this.animationCount = 0;
+        this.frameNumber = (this.frameNumber+1) % Kien.LMBS_Core.cursorFrameCount;
+    }
+}
+
+Sprite_TargetArrow.prototype.updateFrame = function() {
+    var fw = this.bitmap.width / Kien.LMBS_Core.cursorFrameCount;
+    var fh = this.bitmap.height;
+    var fx = fw * this.frameNumber;
+    this.setFrame(fx,0,fw,fh);
+}
+
+//-----------------------------------------------------------------------------
 // Sprite_BattlerLMBS
 //
 // The superclass of Sprite_ActorLMBS and Sprite_EnemyLMBS.
@@ -5022,6 +5121,10 @@ Sprite_BattlerLMBS.prototype.getCurrentBoxWidth = function() {
     } else {
         return this.currentBitmapCache().boxwidth;
     }
+}
+
+Sprite_BattlerLMBS.prototype.getSpriteTop = function() {
+    return this.y - this.height*this.anchor.y;
 }
 
 Sprite_BattlerLMBS.prototype.getCurrentBoxHeight = function() {
@@ -5547,23 +5650,23 @@ Sprite_ProjectileLMBS.prototype.initialize = function(object, sprite){
 }
 
 Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
-    this._xspeed = param.xspeed || 3;
-    this._yspeed = param.yspeed || 0;
-    this._damagePer = param.damagePercent || 1;
+    this._xspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.xspeed,this) || 3;
+    this._yspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.yspeed,this) || 0;
+    this._damagePer = Kien.LMBS_Core.loadJSONEvaluableValue(param.damagePercent,this) || 1;
     this._bitmapName = param.filename || "";
-    this._knockbackx = param.knockbackx || 5;
-    this._knockbacky = param.knockbacky || 5;
-    this._knockbackdir = param.knockbackdir || 0;
-    this._pierce = param.pierce || 1;
+    this._knockbackx = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackx,this) || 5;
+    this._knockbacky = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbacky,this) || 5;
+    this._knockbackdir = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackdir,this) || 0;
+    this._pierce = Kien.LMBS_Core.loadJSONEvaluableValue(param.pierce,this) || 1;
     this._dangle = param.angleFollowDirection || false;
-    this._invincibleFrames = param.invincibleFrames || 1;
+    this._invincibleFrames = Kien.LMBS_Core.loadJSONEvaluableValue(param.invincibleFrames,this) || 1;
     this._frameNumber = 1;
     this._animationSpeed = 4;
     this._finish = false;
     this._animationCount = 0;
     this.updateBitmap();
-    this.x = this._userSprite._battler.screenX() + (param.dx ? param.dx : 0);
-    this.y = this._userSprite._battler.screenY() + (param.dy ? param.dy : 0);
+    this.x = this._userSprite._battler.screenX() + (param.dx ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dx,this) : 0);
+    this.y = this._userSprite._battler.screenY() + (param.dy ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dy,this) : 0);
     this._action._damagePercentage = this._damagePer;
     this.visible = true;
     this._isLoaded = true;
@@ -5692,7 +5795,7 @@ Sprite_GravityProjectileLMBS.prototype.constructor = Sprite_GravityProjectileLMB
 
 Sprite_GravityProjectileLMBS.prototype.onJSONloaded = function(param) {
     Sprite_ProjectileLMBS.prototype.onJSONloaded.call(this, param);
-    this._gravity = param.gravity || 0.2;
+    this._gravity = Kien.LMBS_Core.loadJSONEvaluableValue(param.gravity,this) || 0.2;
 }
 
 Sprite_GravityProjectileLMBS.prototype.updatePosition = function() {
@@ -6287,6 +6390,7 @@ Spriteset_BattleLMBS.prototype.createLowerLayer = function() {
 
 Spriteset_BattleLMBS.prototype.createUpperLayer = function() {
     Spriteset_Base.prototype.createUpperLayer.call(this);
+    this.createTargettingCursor();
 };
 
 Spriteset_BattleLMBS.prototype.createBackground = function() {
@@ -6311,6 +6415,12 @@ Spriteset_BattleLMBS.prototype.createBattlerSprite = function() {
 
 }
 
+Spriteset_BattleLMBS.prototype.createTargettingCursor = function() {
+    this._targetCursor = new Sprite_TargetArrow();
+    this._targetCursorTargetSprite = null;
+    this.addChild(this._targetCursor);
+}
+
 Spriteset_BattleLMBS.prototype.onStart = function() {
     this._Actors.forEach(function(sprite) {
         sprite.onStart();
@@ -6333,6 +6443,37 @@ Spriteset_BattleLMBS.prototype.findSprite = function(battler){
         return sprite;
     }
     return null;
+}
+
+Spriteset_BattleLMBS.prototype.update = function() {
+    Spriteset_Base.prototype.update.call(this);
+    this.updateTargetArrow();
+}
+
+Spriteset_BattleLMBS.prototype.updateTargetArrow = function() {
+    if (BattleManager.actor()) {
+        var target = BattleManager.actor()._target;
+        if (target) {
+            if (target.isActor()) {
+                this._targetCursorTargetSprite = this._Actors.filter(function(sprite) { 
+                    return sprite._battler == target; 
+                })[0];
+            } else {
+                this._targetCursorTargetSprite = this._Enemies.filter(function(sprite) { 
+                    return sprite._battler == target; 
+                })[0];
+            }
+        }
+    } else {
+        this._targetCursorTargetSprite = null;
+    }
+    if (this._targetCursorTargetSprite) {
+        this._targetCursor.x = this._targetCursorTargetSprite.x;
+        this._targetCursor.y = this._targetCursorTargetSprite.getSpriteTop();
+        this._targetCursor.visible = !this._targetCursorTargetSprite._battler.isDead();
+    } else {
+        this._targetCursor.visible = false;
+    }
 }
 
 Spriteset_BattleLMBS.prototype.updatePosition = function() {
@@ -6485,6 +6626,47 @@ Spriteset_BattleLMBS.prototype.shipBattleback2Name = function() {
 Spriteset_BattleLMBS.prototype.autotileType = function(z) {
     return $gameMap.autotileType($gamePlayer.x, $gamePlayer.y, z);
 };
+
+//-----------------------------------------------------------------------------
+// Scene_Boot
+//
+// The scene class for initializing the entire game.
+
+Kien.LMBS_Core.Scene_Boot_create = Scene_Boot.prototype.create;
+Scene_Boot.prototype.create = function() {
+	this.tryCreateCharacterList();
+	Kien.LMBS_Core.Scene_Boot_create.call(this);
+};
+
+Scene_Boot.prototype.tryCreateCharacterList = function() {
+	if (Utils.isNwjs() && Utils.isOptionValid('test')) {
+		var obj = {};
+		var fs = require("fs");
+		var loc = window.location.pathname;
+		var projdir = loc.substring(1, loc.lastIndexOf('/'));
+		var basedir = projdir + "/img/sv_actors";
+		var dirs = fs.readdirSync(basedir).filter(function(name) {
+			return fs.lstatSync(basedir+"/"+name).isDirectory();
+		});
+		dirs.forEach(function(dir){
+			var names = [];
+			var files = fs.readdirSync(basedir+"/"+dir);
+			files.forEach(function(filename) {
+				if (fs.lstatSync(basedir + "/" + dir + "/" + filename).isFile()) {
+					var exts = filename.split(/(.+)\./);
+					if (exts[exts.length - 1] === "png") {
+						names.push(RegExp.$1);
+					}
+				}
+			})
+			if (names.contains("Stand")) {
+				obj[dir] = names;
+			}
+		})
+		console.log(JSON.stringify(obj));
+		fs.writeFileSync(projdir + "/data/characterList.json",JSON.stringify(obj));
+	}
+}
 
 //-----------------------------------------------------------------------------
 // Scene_Map
@@ -6812,6 +6994,9 @@ Scene_BattleLMBS.prototype.updateCamera = function() {
         $gameScreen._screenMembers = [];
     } else {
         $gameScreen._screenMembers = [this.activeActor(), this.activeActor()._target];
+        if (this.activeActor()._originalTarget) {
+            $gameScreen._screenMembers.push(this.activeActor()._originalTarget);
+        }
         if (this._enemyWindow.active) {
             if (!!this._enemyWindow.enemy()){
                 $gameScreen._screenMembers.push(this._enemyWindow.enemy());

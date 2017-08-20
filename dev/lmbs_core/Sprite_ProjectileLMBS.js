@@ -64,23 +64,23 @@ Sprite_ProjectileLMBS.prototype.initialize = function(object, sprite){
 }
 
 Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
-    this._xspeed = param.xspeed || 3;
-    this._yspeed = param.yspeed || 0;
-    this._damagePer = param.damagePercent || 1;
+    this._xspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.xspeed,this) || 3;
+    this._yspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.yspeed,this) || 0;
+    this._damagePer = Kien.LMBS_Core.loadJSONEvaluableValue(param.damagePercent,this) || 1;
     this._bitmapName = param.filename || "";
-    this._knockbackx = param.knockbackx || 5;
-    this._knockbacky = param.knockbacky || 5;
-    this._knockbackdir = param.knockbackdir || 0;
-    this._pierce = param.pierce || 1;
+    this._knockbackx = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackx,this) || 5;
+    this._knockbacky = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbacky,this) || 5;
+    this._knockbackdir = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackdir,this) || 0;
+    this._pierce = Kien.LMBS_Core.loadJSONEvaluableValue(param.pierce,this) || 1;
     this._dangle = param.angleFollowDirection || false;
-    this._invincibleFrames = param.invincibleFrames || 1;
+    this._invincibleFrames = Kien.LMBS_Core.loadJSONEvaluableValue(param.invincibleFrames,this) || 1;
     this._frameNumber = 1;
     this._animationSpeed = 4;
     this._finish = false;
     this._animationCount = 0;
     this.updateBitmap();
-    this.x = this._userSprite._battler.screenX() + (param.dx ? param.dx : 0);
-    this.y = this._userSprite._battler.screenY() + (param.dy ? param.dy : 0);
+    this.x = this._userSprite._battler.screenX() + (param.dx ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dx,this) : 0);
+    this.y = this._userSprite._battler.screenY() + (param.dy ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dy,this) : 0);
     this._action._damagePercentage = this._damagePer;
     this.visible = true;
     this._isLoaded = true;

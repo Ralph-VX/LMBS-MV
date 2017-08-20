@@ -199,6 +199,9 @@ Scene_BattleLMBS.prototype.updateCamera = function() {
         $gameScreen._screenMembers = [];
     } else {
         $gameScreen._screenMembers = [this.activeActor(), this.activeActor()._target];
+        if (this.activeActor()._originalTarget) {
+            $gameScreen._screenMembers.push(this.activeActor()._originalTarget);
+        }
         if (this._enemyWindow.active) {
             if (!!this._enemyWindow.enemy()){
                 $gameScreen._screenMembers.push(this._enemyWindow.enemy());

@@ -656,8 +656,10 @@ Game_Battler.prototype.chooseCorrectTarget = function() {
         this.chooseEnemyTarget();
     } else if (this._actions[0].isForFriend() && !this.friendsUnit().members().contains(this._target)) {
         this._originalTarget = this._target;
+        this._target = null;
         this.chooseFriendTarget();
     }
+
 }
 
 Game_Battler.prototype.chooseEnemyTarget = function() {
@@ -669,7 +671,7 @@ Game_Battler.prototype.chooseFriendTarget = function() {
     if (action.isDeathStateRemoving()) {
         this._target = this.friendsUnit().randomDeadTarget();
     }
-    if (!this._target && action.isStateRemoving()) {
+    if (!this._target && action.isStateAffecting()) {
         var effects = action.getAllStateAffectingEffect();
         var members = this.friendsUnit().getStateAffectableMembers(effects);
         if (members.length > 0) {
@@ -685,7 +687,7 @@ Game_Battler.prototype.chooseFriendTarget = function() {
             scores[index] = action.evaluateWithTarget(battler) + action.evaluateHealEffect(battler);
         });
         indices.filter(function(a) {
-            return scores[a] > 0;
+            return scores[a] >= 0;
         }).sort(function(a,b) {
             var ra = scores[a];
             var rb = scores[b];

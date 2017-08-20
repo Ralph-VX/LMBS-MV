@@ -256,6 +256,10 @@ Sprite_BattlerLMBS.prototype.getCurrentBoxWidth = function() {
     }
 }
 
+Sprite_BattlerLMBS.prototype.getSpriteTop = function() {
+    return this.y - this.height*this.anchor.y;
+}
+
 Sprite_BattlerLMBS.prototype.getCurrentBoxHeight = function() {
     if (this.currentBitmapCache().json) {
         var pi = this._battler._patternIndex >= 0 ? this._battler._patternIndex : parseInt(this._animationCount / Kien.LMBS_Core.animationSpeed,10);

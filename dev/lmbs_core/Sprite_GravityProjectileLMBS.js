@@ -12,7 +12,7 @@ Sprite_GravityProjectileLMBS.prototype.constructor = Sprite_GravityProjectileLMB
 
 Sprite_GravityProjectileLMBS.prototype.onJSONloaded = function(param) {
     Sprite_ProjectileLMBS.prototype.onJSONloaded.call(this, param);
-    this._gravity = param.gravity || 0.2;
+    this._gravity = Kien.LMBS_Core.loadJSONEvaluableValue(param.gravity,this) || 0.2;
 }
 
 Sprite_GravityProjectileLMBS.prototype.updatePosition = function() {

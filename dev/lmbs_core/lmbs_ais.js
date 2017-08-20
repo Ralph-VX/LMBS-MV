@@ -480,7 +480,7 @@ Game_LMBSAiActorBase.prototype.update = function() {
         // When chosen the normal attack, or there have no magic skills.
         this._battler._aiData.actionType = 'attack';
         this._battler._aiData.readySkill = this._battler.chooseAvailableSkills(this._battler._availableAttacks).sample();
-        if(this._battler._aiData.readySkill) {
+        if (this._battler._aiData.readySkill) {
             this._battler.chooseTarget();
             if (this._battler._target) {
                 var dist = Kien.LMBS_Core.getSkillRange(this._battler._aiData.readySkill);
