@@ -6,6 +6,7 @@
 Kien.LMBS_Core.Game_Actor_initMembers = Game_Actor.prototype.initMembers;
 Game_Actor.prototype.initMembers = function() {
     Kien.LMBS_Core.Game_Actor_initMembers.call(this);
+    this._availableAttacks = [];
     this._attackSets = {}; // Preloaded Attack Motion Sets. ["dir"] shows different direction.
     this._skillSets = {}; // Skills can performed with skill button. ["dir"] shows different direction.
     this._inputData = {};
@@ -224,6 +225,24 @@ Game_Actor.prototype.updateInputData = function() {
         this._inputData.reservedInput = 'LMBSguard';
         this._inputData.inputKeepTime = Kien.LMBS_Core.inputKeepTime;
     }
+    if (Input.dir4 != 0) {
+        this._inputData.movementReservedInputDir = Input.dir4;
+        if (Input.isPressed("up")) {
+            this._inputData.movementReservedInput = "jump";
+            this._inputData.movementReservedInputDir = Input.isPressed('left') ? 4 : Input.isPressed('right') ? 6 : 0;
+        } else if (Input.isTriggered("left")) {
+            this._inputData.movementReservedInput = "left";
+        } else if (Input.isTriggered("right")) {
+            this._inputData.movementReservedInput = "right";
+        } else {
+            this._inputData.movementReservedInput = "move";
+        }
+    }
+    if (Input.isTriggered("LMBSprevioustarget")) {
+        this._inputData.utilInput = "ptarget";
+    } else if (Input.isTriggered("LMBSnexttarget")) {
+        this._inputData.utilInput = "ntarget";
+    }
 }
 
 Game_Actor.prototype.updateInputGuard = function() {
@@ -238,7 +257,13 @@ Game_Actor.prototype.updateInputGuard = function() {
 
 Game_Actor.prototype.updateInputAttack = function() {
     if(this._inputData.reservedInput ==='ok' && this.isInputAvailable()) {
-        this.useNormalAttack(Input.dir4);
+        var d4 = this._inputData.reservedInputDir;
+        if(d4 == 4){
+            d4 = (this._facing ? 4 : 6)
+        } else if (d4 == 6){
+            d4 = (this._facing ? 6 : 4)
+        }
+        this.useNormalAttack(d4);
         this._inputData.reservedInput = null;
         this._inputData.reservedInputDir = 0;
         this._inputData.inputKeepTime = -1;
@@ -247,78 +272,97 @@ Game_Actor.prototype.updateInputAttack = function() {
 
 Game_Actor.prototype.updateInputSkill = function() {
     if(this._inputData.reservedInput ==='cancel' && this.isInputAvailable()) {
-        this._inputData.reservedInput = null;
-        this._inputData.reservedInputDir = 0;
-        this._inputData.inputKeepTime = -1;
-        var d4 = Input.dir4;
+        var d4 = this._inputData.reservedInputDir;
         if(d4 == 4){
             d4 = (this._facing ? 4 : 6)
         } else if (d4 == 6){
             d4 = (this._facing ? 6 : 4)
         }
         this.useRegistedSkill(d4);
+        this._inputData.reservedInput = null;
+        this._inputData.reservedInputDir = 0;
+        this._inputData.inputKeepTime = -1;
     }
 }
 
 Game_Actor.prototype.updateInputTarget = function() {
-    if (Input.isTriggered("LMBSprevioustarget")) {
+    if (this._inputData.utilInput == "ptarget") {
         if (this._target) {
             var temp = this._target;
             do  {
                 this._target = BattleManager.previousTarget(this._target);
             } while (!(this.isTargetAvailable(this._target) || this._target === temp));
         }
-    } else if (Input.isTriggered("LMBSnexttarget")) {
+        this._inputData.utilInput = null;
+    } else if (this._inputData.utilInput == "ntarget") {
         if (this._target) {
             var temp = this._target;
             do  {
                 this._target = BattleManager.nextTarget(this._target);
             } while (!(this.isTargetAvailable(this._target) || this._target === temp))
         }
+        this._inputData.utilInput = null;
     }
 }
 
 Game_Actor.prototype.updateInputMovement = function() {
     if(this.isActable()){
-        if(Input.isPressed('left')){
-            this.moveWith(-(this.moveSpeed()));
-        } else if (Input.isPressed('right')){
-            this.moveWith(this.moveSpeed());
+        if (this._inputData.movementReservedInput == "move") {
+            if (this._inputData.movementReservedInputDir == 4){
+                this.moveLeft();
+            } else if (this._inputData.movementReservedInputDir == 6){
+                this.moveRight();
+            }  else {
+                this._dash = false;
+            }
+            this._inputData.movementReservedInput = null;
+            this._inputData.movementReservedInputDir = 0;
         } else {
             this._dash = false;
         }
     }
 }
 
+Game_Actor.prototype.moveLeft = function() {
+    this.moveWith(-(this.moveSpeed()));
+}
+
+Game_Actor.prototype.moveRight = function() {
+    this.moveWith(this.moveSpeed());
+}
+
 Game_Actor.prototype.updateInputJump = function() {
-    if(Input.isPressed('up') && this.isActable()){
+    if (this._inputData.movementReservedInput == "jump" && this.isActable()){
         this._inputData.jumpInputDur++;
         if (this._inputData.jumpInputDur == Kien.LMBS_Core.inputDelay){
-            var dir = Input.isPressed('left') ? 4 : Input.isPressed('right') ? 6 : 0
+            var dir = this._inputData.movementReservedInputDir;
             this.jump(dir);
             this._inputData.jumpInputDur = 0;
         }
+        this._inputData.movementReservedInput = null;
     } else {
         this._inputData.jumpInputDur = 0;
     }
 }
 
 Game_Actor.prototype.updateInputDash = function() {
-    if (Input.isTriggered('left')){
+    if (this._inputData.movementReservedInput == "left"){
         if(this._inputData.lastDir == 4){
             this._dash = true
         } else {
             this._inputData.lastDir = 4;
             this._inputData.lastDirPast = 0;
         }
+        this._inputData.movementReservedInput = "move";
     }
-    if (Input.isTriggered('right')){
+    if (this._inputData.movementReservedInput == "right"){
         if(this._inputData.lastDir == 6){
             this._dash = true;
         } else {
             this._inputData.lastDir = 6;
             this._inputData.lastDirPast = 0;
         }
+        this._inputData.movementReservedInput = "move";
     }
 }
 
