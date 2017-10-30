@@ -59,6 +59,7 @@ Scene_SkillConfig.prototype.commandSkillConfig = function() {
 Scene_SkillConfig.prototype.item = function() {
     return this._itemWindow.item();
 };
+
 Scene_SkillConfig.prototype.onItemOk = function() {
     this.actor().setLastMenuSkill(this.item());
     var ext = this._skillConfigWindow.currentExt();
