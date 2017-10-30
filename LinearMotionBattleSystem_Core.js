@@ -12,58 +12,7 @@ Kien.LMBS_Core = {};
 /*:
  * @plugindesc Tweek the battle system to LMBS battle system
  * @author Kien
- *
- * @param ===Battle Value Settings===
- * @desc 
- * @default 
- *
- * @param Battle Field Width
- * @desc Width of the battle field. Limit the movement of battlers
- * @default 816
-
- * @param Battle Field Ground Y
- * @desc the Y coordinate of ground 
- * @default 500
- *
- * @param Maximum Fall Speed
- * @desc the maximum distance characters falls each frame.
- * @default 10
- *
- * @param Animation Speed
- * @desc The amount of frames an picture will show in character loop animation.
- * @default 4
- *
- * @param Damage Popup Offset X
- * @desc The offset of the damage pop display
- * @default 0
- *
- * @param Damage Popup Offset Y
- * @desc The offset of the damage pop display 
- * @default -40
- *
- * @param Turn Length
- * @desc The length of 1 turn in frame, use to process those turn-based features such
- * as states.
- * @default 60
- *
- * @param Jump Power
- * @desc Force of jump that characters will take. Affect height of jump.
- * @default 20
- *
- * @param Enemy X Start
- * @desc Starting coordinate of enemy troop. This value will add to coordinate
- * set in troop as actual coordinate in-game.
- * @default 520
- *
- * @param Battle End Wait Time
- * @desc Length in Frames to wait after the battle rewards are displayed.
- * Player can shorten this time to 1/4 by hold button.
- * @default 200
- *
- * @param Auto Guard Time After Guard
- * @desc Length in frames that character will automatically guard after successfully guard
- * an attack.
- * @default 15
+ * @requiredAssets img/system/cursorLMBS
  *
  * @param ===System Settings===
  * @desc 
@@ -72,67 +21,148 @@ Kien.LMBS_Core = {};
  * @param Enable Default
  * @desc enable the battle system by default.
  * @default true
+ * @type boolean
  *
  * @param Debug Mode
  * @desc Shows the range of hitboxes with colored rects. Only works in Test
  * Mode.
  * @default false
+ * @type boolean
  * 
+ * @param Battle Field Width
+ * @desc Width of the battle field. Limit the movement of battlers
+ * @default 816
+ * @type number
+
+ * @param Battle Field Ground Y
+ * @desc the Y coordinate of ground 
+ * @default 500
+ * @type number
+ *
+ * @param Maximum Fall Speed
+ * @desc the maximum distance characters falls each frame.
+ * @default 10
+ * @type number
+ *
+ * @param Animation Speed
+ * @desc The amount of frames an picture will show in character loop animation.
+ * @default 4
+ * @type number
+ *
+ * @param Damage Popup Offset X
+ * @desc The offset of the damage pop display
+ * @default 0
+ * @type number
+ * @min -99999999
+ *
+ * @param Damage Popup Offset Y
+ * @desc The offset of the damage pop display 
+ * @default -40
+ * @type number
+ * @min -9999999
+ *
+ * @param Turn Length
+ * @desc The length of 1 turn in frame, use to process those turn-based features such
+ * as states.
+ * @default 60
+ * @type number
+ *
+ * @param Jump Power
+ * @desc Force of jump that characters will take. Affect height of jump.
+ * @default 20
+ * @type number
+ *
+ * @param Enemy X Start
+ * @desc Starting coordinate of enemy troop. This value will add to coordinate
+ * set in troop as actual coordinate in-game.
+ * @default 520
+ * @type number
+ *
+ * @param Battle End Wait Time
+ * @desc Length in Frames to wait after the battle rewards are displayed.
+ * Player can shorten this time to 1/4 by hold button.
+ * @default 200
+ * @type number
+ *
+ * @param Auto Guard Time After Guard
+ * @desc Length in frames that character will automatically guard after successfully guard
+ * an attack.
+ * @default 15
+ * @type number
+ *
  * @param Default Facing
  * @desc the facing of the characters in graphs. true is right, false is left.
  * @default false
+ * @type boolean
  *
  * @param Double Tap Time
  * @desc The length of time between two input will be considered as double tap.
  * @default 15
+ * @type number
  *
  * @param Can Move Through Ally
  * @desc Can battlers move through ally battlers.
  * @default true
+ * @type boolean
  *
  * @param Can Move Through Enemy
  * @desc Can battlers move through enemy battlers.
  * @default false
+ * @type boolean
  *
  * @param Can Dash Through Ally
  * @desc Can battlers dash through ally battlers. Only have effect when
  * Can Move Through Ally is false.
  * @default true
+ * @type boolean
  *
  * @param Can Dash Through Enemy
  * @desc Can battlers dash through enemy battlers. Only have effect when
  * Can Move Through Enemy is false.
  * @default true
+ * @type boolean
  *
  * @param Fix Character Size
  * @desc let the size of all pose of character same as "Stand" pose.
  * @default true
+ * @type boolean
  *
  * @param Skill Set Left Right Act Same
  * @desc Let Right and Left skill use same skill in skill set.
  * @default true
+ * @type boolean
  *
  * @param Delay for jump
  * @desc amount of frames wait when jump is inputed for player. to let
  * player able to cast skill assigned in up.
  * @default 6
+ * @type number
  *
  * @param Pause Game While Event By Default
  * @desc pause the game or not while event is running by default. Can be triggered via
  * plugin command.
  * @default false
+ * @type boolean
  *
  * @param Input Keep Time
  * @desc Time the input from player will be keep for triggering next action.
  * @default 10
+ * @type number
  *
  * @param Cursor Animation Speed
  * @desc Speed of cursor animation of Targetting Cursor.
  * @default 8
+ * @type number
  *
  * @param Cursor Frame Count
  * @desc Amount of frame of Targetting Cursor.
  * @default 4
+ * @type number
+ *
+ * @param Default Hitstop Length
+ * @desc Amount of frame battler will stop after hit/get hitted.
+ * @default 7
+ * @type number
  *
  * @param ===Key Settings===
  * @desc 
@@ -141,14 +171,17 @@ Kien.LMBS_Core = {};
  * @param Guard Key
  * @desc virtual key code of the key for Guarding.
  * @default 67
+ * @type number
  *
  * @param Previous Target Key
  * @desc virtual key code of the key for selecting Previous Target.
  * @default 65
+ * @type number
  *
  * @param Next Target Key
  * @desc virtual key code of the key for selecting Next Target.
  * @default 83
+ * @type number
  *
  * @param ===Menu Settings===
  * @desc 
@@ -169,10 +202,12 @@ Kien.LMBS_Core = {};
  * @param Battle Skill Icon
  * @desc Icon index of the 'Skill' in battle Menu
  * @default 76
+ * @type number
  *
  * @param Battle Item Icon
  * @desc Icon index of the 'Item' in battle Menu
  * @default 176
+ * @type number
  *
  * @param Battle Message Window Color
  * @desc Set the window color of skill name window. Atleast need 2 brackets for
@@ -186,213 +221,256 @@ Kien.LMBS_Core = {};
  * @param Max Camera Zoom
  * @desc Maximum maginification camera can be. Prevent the zoom becomes too big.
  * @default 2
+ * @type number
+ * @decimal 4
  *
  * @param Min Camera Zoom
  * @desc Minimum maginification camera can be. Prevent the zoom becomes too small.
  * @default 0.7
+ * @type number
+ * @decimal 4
  *
  * @param Camera Left Margin
  * @desc Amount of pixels camera will leave from the left-most of characters
  * @default 100
+ * @type number
  *
  * @param Camera Right Margin
  * @desc Amount of pixels camera will leave from the right-most of characters
  * @default 100
+ * @type number
+ *
+ * @param ===File Settings===
+ * @desc 
+ * @default 
+ *
+ * @param Used Image Files
+ * @desc Choose Image files to avoid these file being removed by "remove unused" option.
+ * @default 
+ * @type file[]
+ * @require 1
  *
  * @help
- * ============================================================================
- * * Set Normal Attack Skill
- * ============================================================================
- *   Add <Attack Skill Set [dir]=[id]> in note to set the attack performed when 
- * pressed Attack button with d-key. 0 is neutral, 2,4,6,8 are four directions.
- *   When only 0 is set, then this skill will performed regardless the d-key
- * state.
- *   When set to Actor note, it will be first attack skill performed, when add
- * to skill note, it will be skill performed as chain skill. 
- * ===========================================================================
- * * Skill Settings
- * ===========================================================================
- *   <Aerial Cast:[id]> : set if the skill can cast in air. [id] is the skill id
- * will be casted when the skill is cast in air. 0 for the skill itself.
- * ===========================================================================
- * * Skill Priority
- * ===========================================================================
- *   Add <Skill Priority=[number]> to set priority of the skill. This affect
- * the skills that able or not to perform after a skill. The skill with lower
- * priority can't performed when a skill have higher priority is performing.
- *   number can be -1 to let the skill performed regardless the priority, and
- * -2 to let skill as -1 and let skill with all priority chained freely after 
- * this. Priority 0 is used for normal attacks, and can chain freely with each 
- * other.
- *  Note that enemy will also try to chain the skill with same rules. So make
- * sure to let skills that don't want to be chained have same priority.
- * ===========================================================================
- * * Skill Type
- * ===========================================================================
- *   As Tales Of Series do, This plugin separate skills to two categories. One
- * is skills, and another is magics. This is decided by the skills "Hit Type",
- * Where When skill has a physical Hit Type, it will be considered as Skill,
- * When skill has a magic Hit Type, it will be considered as Magic. Certain Hit
- * Hit type currently is not considered as either of it.
- *   In the plugin, Physical Skill are assumed as need to close to target, and 
- * Magic Skill are not. This speration is not to restrict the type of damage,
- * only the way AIs will handle it. Skills are those actions will cast near enemy,
- * magic are those skills cast at far position, and thus characters will try to
- * go back their initial position. Certain Hit hit type will be cast at where they
- * currently at.
- * ===========================================================================
- * * Set Skill Motion
- * ===========================================================================
- *   To set skill motion, add <Skill Motion> and </Skill Motion> at skill's
- * note. Lines between these will be the desciprtion of the skill motion. Or
- * can use <Skill Motion=filename> to determine a json file placed in
- * data/motions that descripting skill motion. Json Format will be described 
- * later.
- *   Lines will be processed one-by-one until there is some process need to
- * interupt the process.
- * ===========================================================================
- * * Skill Motion Lines
- * ===========================================================================
- *  ChangePose [posename] : Change the pose of the user to [posename].
- *  FrameForward : Change the frame number of the pose to next frame.
- *  FrameBackward : Change the frame number of the pose to previous frame.
- *  Move [dx],[dy],[dur] : Move the user's position for [dx],[dy] pixels in 
- *   [dur] duration. This will not pause the process of line.
- *  Wait [dur] : Abort and stop the process for [dur] frame.
- *  StartInput : Start to accept input. This Includes normal attack chain, and
- *   chain skill perform.
- *  EndInput : End Input accept.
- *  StartDamage [x],[y],[width],[height],[damagePercent],[knockx],[knocky],[knockdir]:
- *   Start to deal damage from this frame. x,y,width,height define a rect
- *   that represent the area that enemy will take damage. damgePercent will be the 
- *   percentage of damage calculated from skill formula,where 1 will be 100%, knockx,knocky,knockdir is
- *   the knockback strength and direction. knockdir should be 4,6 or 0. note that
- *   Each enemy only takes one time for each StartDamage.
- *  EndDamage: stop to deal damage.
- *  Projectile [classname],[parameters]: emit a projectile with [classname] class.
- *   [parameters] are a string passed into class's initializer. Detailed information
- *   listed in below section.
- *  LetFall: enable the gravity-pull falling in motion.
- *  NoFall: disable the gravity-pull falling.
- *  WaitFall: wait until the character touches the ground.
- *  ApplyDamage [damagePer],[knockx],[knocky],[knockdir]:
- *   Deal damage to target, damage is multiplied by [damagePer] and knockback by
- *   [knockx],[knocky],[knockdir]
- *  WaitCast [duration]: Chagne the pose to "Cast" and enable auto looping, wait
- *   for [duration] frames. this waiting is different with Wait [dur].
- *  Rotate [angle],[direction],[duration]: Rotate the character.
- *   [angle] is the target angle of the rotation. Specify the angle currently at
- *  will let character rotate one full circle.
- *   [direction] is the direction of the rotation. 4 is counter-clockwise, 6 is 
- *  clockwise.
- *   [duration] is the time this rotation will be process.
- * ===========================================================================
- * * JSON Skill Motion
- * ===========================================================================
- *   Skill motion can also be descripted by JSON file. These JSON file should 
- * placed in data/motions folder in project (Create the folder by yourself.),
- * and determine the skill use that file by add <Skill Motion=[filename]> to
- * skill. Note that filename should exclude .json extension.
- * ===========================================================================
- * * JSON Skill Motion format
- * ===========================================================================
- *   The file should be an array, each element of array represent a line of motion
- * in form of object. Please refference to documentations about JSON with this part
- * of help.
- *   All motion contains a property named "type", and its value will represent
- * the type of the motion. Object also contains type-specified properties 
- * describes how motion will look like.
- *   Following lines are the objects can be the parts for the motion list. Simply copy
- * the linee, replace the content enclosed by [](include brackets) with desired values and delete content
- * after double slash (include slashes).
- *  {"type": "pose", "name": "[name of the new pose]"} // change the pose of the battler
- *  {"type": "forward"} // Frame advance the pose animation.
- *  {"type": "backward"} // roll back to previous frame of the pose animation.
- *  {"type": "move", "dx": [amount in x-coordinate], "dy": [amount in y-coordinate], "dur": [length of frames movement take]} // move the battler with desired amount in desired time.
- *  {"type": "wait", "dur" : [duration of wait command]} // Pause the execution of the motion list and apply the executed motions in game.
- *  {"type" : "startinput"} // start to accept player/AI input
- *  {"type" : "endinput"} // stop to accept input
- *  {"type" : "startdamage", "rect" : 
-        {"x": [x-coordinate of the damaging rect relate to user],"y": [y-coordinate of the damaging rect relate to user], "width": [width of the rect], "height": [height of rect]},
-     "damage": [float value to multiply to the damage value],
-     "knockback": {"x": [strength of knockback in x direction],"y": [strength of knockback in y direction]},
-     "knockdir": [direction of knockback,can be 4,6,0. 0 means same to battler's facing]} // Start to deal damage in a specified rectangle. This Damage will only applied once per enemy.
-     {"type" : "enddamage"} // Finish the Damage
-     {"type" : "projectile", "classname" : [name of the projectiles's class name],"parameters": [parameters will pass to the class, see the later part for detail]} // Start to launch a projectile.
-     {"type" : "letfall"} // Enable falling in motion. Disabled for default.
-     {"type" : "nofall"} // Disable falling in motion.
-     {"type" : "waitfall", "dur" : 1}  // Pause the process until the characfter touches ground.
-     {"type" : "applydamage",
-     {"damage" : [float value to multiply to the damage value],
-      "knockback": {"x": [strength of knockback in x direction],"y": [strength of knockback in y direction]},
-     "knockdir": [direction of knockback,can be 4,6,0. 0 means same to battler's facing]}// Deal the damage to target no matter where it is at.
-     {"type" : "waitcast","dur" : [length of casting in frame]} // Change the pose into "Cast" and wait. 
- * ===========================================================================
- * * Projectiles
- * ===========================================================================
- *   Projectiles are a special Sprite_Base extended classes that represent some
- * non-player controllable objects that can do something.
- *   User can define self implemented Sprite classes use as projectiles. The 
- * required properties are following:
- *   _finish: boolean property, represents the projectile action is finished or not.
- * when action is finish, set this property to true and system will automatically
- * remove it from the game.
- *  update(): a function that update the actions.
- *  setupLMBS(sprite): a function that will called after initializer is called.
- * sprite is the user's sprite.
- *  removeLMBS(): a function that will called when the projectile will be removed. Use this
- * function to remove all resources.
- * ===========================================================================
- * * Provided Projectile
- * ===========================================================================
- *  Sprite_Projectile: A projectile that shoots a straight moving projectile.
- * parameters are : [filename],[framenumber],[animationspeed],[xspeed],[yspeed],[damagePer],
- * [knockbackx],[knockbacky],[knockbackdir].
- * filename is the name of graphics placed at img/projectile (create folder by yourself).
- * framenumber is the amount of frames in graph, animationspeed is the speed of frames pass.
- * xspeed and yspeed is the speed of projectile in each direction.
- * damagePer is the percentage of damage in the skill formula.
- * knockbackx,knockbacky,knockbackdir is smae as knockback related stuff in StartDamage
- * ---------------------------------------------------------------------------
- *  Sprite_AnimationLMBS: A projectile that shows an animation, with ability to deal
- * damage as desired through JSON descriptor.
- *  parameters are: [origin],[dx],[dy],[jsonname],[animationid],[delay],[mirror],[follow]
- *  origin,dx,dy is use to decide where the animation will be played. dx,dy is the coordinate
- * of the animation relate to origin. origin can be following values: 
- *      target: the target battler
- *      user: the user.
- *      screen: the upper-left of screen.
- *  jsonname is the name of json file placed in data/animations. This file contains the
- * information relate to damage action.
- *  animationid is the ID of the animation will be played.
- *  delay is the amount of frames the animation will wait before play.
- *  mirror is a boolean value (true/false) shows is the animation is being reverted or not.
- *  follow is a boolean value (true/false) shows that is the animation follows the origin.
- * ============================================================================
- * * Ai Settings
- * ============================================================================
- *  Actor's AI is defined by two parameter, which are "AI Type" and "Target Type".
- * Each is set through the note, by adding following line in note: 
- * <Attack Rate=[attackrate],[magicrate]> and and <Target Type=[typename]>
- *  Attack Rate is use to define the percentage of attacks/skills and magics actors will use
- * in battle. Note that when attacks and skills are chosen by AI, he will try to
- * use as much skills as he can by chaining more skills with higher priority 
- * after what he used, but he will not try to chain skill with priority -1. Vaues canbe
- * any whole number, ratio between values will become the ratio of attacks/skills and magic.
- *  Target type can have following typenames:
- *  Nearest: Will Target Enemy nearest to him.
- *  Farest: Will Target Enemy Farest to him
- *  HighestHP: Will Target Enemy have highest current HP.
- *  LowestHP: Will Target Enemy have lowest current HP.
- * Note that when actor had chosen to perform some action but the target is not reachable,
- * he will try to find another target that is reachable no matter the target type is.
- * ============================================================================
- * * Skill Range Setting
- * ============================================================================
- *  Skills can set its range by add <Skill Range=[distance]>. This range is only
- * used in AI.
- *  If this range is not set, AI will try to search the skill's motion, find first
- * damage action and read its rect to use as range.
+ * WIP
+ * ==============================================================================
+ * * List of Skill Motion Command
+ * ==============================================================================
+ * Format is:
+ * * Command Name in LMBS Editor
+ * - Line used in Note section of a skill with parameters enclosed in []
+ * - Description of Command and parameters.
+ * Few Instruction:
+ * - User represents battler who used the skill.
+ * - Target represents battler who is targeted by the skill, defined by system.
+ * - Unless described, coordinate system in this section is like this:
+ *   - Origin placed on the user.
+ *   - Positive X coordinate going toward user's facing.
+ *   - Positive Y coordinate going up.
+
+ * * Change Pose
+ * - ChangePose [posename]
+ * - Chagne the User's Pose to [posename].
+
+ * * Frame Forward
+ * - FrameForward
+ * - Increment the User's current Pose Animation's frame count. Will Take no effect
+ * if current frame is the last frame.
+
+ * * Frame Backward
+ * - FrameBackward
+ * - Decrement the User's current Pose Animation's frame count. Will take no effect
+ * if current frame is the first frame.
+
+ * * Move
+ * - Move [dx],[dy],[duration]
+ * - Move the User [dx] pixels in x-coordinate, [dy] pixels in y-coordinate. This 
+ * Movement will take for [duration] frames to finish.
+
+ * * Wait
+ * - Wait [duration]
+ * - Pause the command processing for [duration] frames. If this command is not
+ * called, system will keep process the command, and all movements/pose changes
+ * will not take effect.
+
+ * * Start Input
+ * - StartInput
+ * - Allow player to input for attack/skill keys to chain another skill. Current
+ * skill will terminate instantly, and all changes to User except movements will
+ * reset to default state (weapon image, pose, etc.)
+
+ * * Start Damage
+ * - StartDamage [x],[y],[width],[height],[damage],[knockbackx],[knockbacky],[knockbackdir]
+ * - Command User to apply skill effect damage to any enemy battler goes into the rectangle
+ * - represented by [x], [y], [width], [height]. 
+ *   [damage] is the value that will be multiplied on the damage value calculated 
+ *   from skill's Damage Formula, where 1 represents full damage, 0.5 represents 
+ *   half damage, 2 represents double damage.
+ *   [knockbackx] and [knockbacky] represents the power of knockback will
+ *   apply to the target. higher the value, longer the knockback distance.
+ *   [knockbackdir] represents this knockback's x direction will be inverted or
+ *   not. Value of Knockbackx will not be inverted if this is 0, and will be
+ *   inverted if this is 1.
+ *   Same Enemy will only be effected by this command once per execution.
+
+ * * End Damage
+ * - EndDamage
+ * - Finish the last Start Damage Call. If no command was called, no effect.
+ * - You Don't need to call this if you want to instantly call another
+ * - Start Damage command.
+
+ * * Projectile
+ * - Projectile [projectileclassname],[parameters]
+ * - Create a Projectile sprite that is described by [projectileclassname]
+ * and [parameters]. See Projectile Section below for detailed information.
+
+ * * Allow Falling
+ * - LetFall
+ * - Let user be affected by gravity. 
+ *   This is the default state, Use NoFall to prevevent falling.
+ * 
+ * * Not Allow Fall
+ * - NoFall
+ * - Let User not affected by gravity.
+
+ * * Wait Until Fallling End
+ * - WaitFall
+ * - Pause the command processing until User touch the ground.
+ * - Remember to call Allow Falling before this command is called.
+
+ * * Apply Damage
+ * - ApplyDamage [damage],[knockbackx],[knockbacky],[knockbackdir]
+ * - Apply the skill affect to target. 
+ *   [damage] is the value that will be multiplied on the damage value calculated 
+ *   from skill's Damage Formula, where 1 represents full damage, 0.5 represents 
+ *   half damage, 2 represents double damage.
+ *   [knockbackx] and [knockbacky] represents the power of knockback will
+ *   apply to the target. higher the value, longer the knockback distance.
+ *   [knockbackdir] represents this knockback's x direction will be inverted or
+ *   not. Value of Knockbackx will not be inverted if this is 0, and will be
+ *   inverted if this is 1.
+
+ * * Wait Cast
+ * - WaitCast [duration]
+ * - Same as Wait, except this will also change the pose of User to "Cast".
+ *
+ * * Rotation
+ * - Rotation [angle],[rotationdirection],[duration],[rounds]
+ * - Let User begin to Rotate. [angle] represents the angle in degree of User after the
+ * Rotation is finish, [rotationdirection] is the direction the rotation will take,
+ * 4 for counter-clockwise, 6 for clockwise. [duration] is the time in frame
+ * this rotation will took. [rounds] used when you want to rotate over 360 degrees.
+ * when [rounds] is 1, [angle] is 90, User will turn 1 rounds and then stop at 90,
+ * and so on.
+
+ * Set Hit Stop
+ * - SetHitStop [length]
+ * - Change the hit stop when User sucsessfully deal damage to any enemy. [length]
+ * is the hit stop length in frame. Value will be reset after the skill is finish.
+
+ * * Stop All Ai
+ * - StopAllAi
+ * - Stop All battler's movement and AI execution except the User. if an AI
+ * controlled battler calls this command, Player character will also stop
+ * and not controllable until Start All Ai command is called or skill finish.
+
+ * * Start All Ai
+ * - StartAllAi
+ * - Start all battler's movement and AI execution that is stopped by
+ * previous Stop All Ai call.
+
+ * * If
+ * - If [expression]
+ * - if the evaluation result of javascript expression described by [expression]
+ * reutrns true, process the lines after this command. If the return value is false,
+ * skip all lines after this command and before next End If line.
+
+ * * End
+ * - End
+ * - Represents the end of If and other control sequence command. 
+ & See corresponding commands for detail.
+ 
+ * * Change Weapon
+ * - ChangeWeapon [weaponname]
+ * - Change the User's Weapon sprite into [weaponname]. if the line only contains 
+ * "ChangeWeapon", then it will set User's Weapon sprite back to default.
+
+ * * Move Weapon
+ * - MoveWeapon [dx],[dy],[duration]
+ * - Move User's weapon sprite for [dx] pixels in x-coordinates and [dy] pixels in y-coordinates,
+ * for [duration] frames.
+
+ * * Rotate Weapon
+ * - RotateWeapon [angle],[rotationdirection],[duration],[rounds]
+ * - Let User's weapon begin to Rotate. [angle] represents the angle in degree of User after the
+ * Rotation is finish, [rotationdirection] is the direction the rotation will take,
+ * 4 for counter-clockwise, 6 for clockwise. [duration] is the time in frame
+ * this rotation will took. [rounds] used when you want to rotate over 360 degrees.
+ * when [rounds] is 1, [angle] is 90, User will turn 1 rounds and then stop at 90,
+ * and so on.
+
+ * * Reset Weapon
+ * - ResetWeapon
+ * - Reset all changes done to User's weapon sprite, except weapon name.
+ * You don't need to call this command manually when the skill is finish.
+
+ * * Show Skill Name
+ * - ShowSkillName
+ * - Show the skill name in the User's default channel.
+ *  About channel, see Battle Message Channel at below. 
+
+ * * Show Message
+ * - ShowMessage [channel],[message]
+ * - Show A line of string represented by [message] in window described by [channel].
+ * if [channel] is displaying a string when this command is executed, then last
+ * string will be replaced by new message. About channel, see Battle Message Channel
+ * at below.
+
+ * * Hide Message
+ * - HideMessage [channel]
+ * - Instantly hide the displaying string that is showing in [channel].
+ * About channel, see Battle Message Channel at below.
+ * ==============================================================================
+ * * List of Projectile
+ * ==============================================================================
+ * Format is:
+ * * Projectile's Classname
+ * - parameters
+ * - Description about projectile and parameters.
+ * Few Instruction:
+ * - User represents battler who used the skill.
+ * - Target represents battler who is targeted by the skill, defined by system.
+ * - Unless described, coordinate system in this section is like this:
+ *   - Origin placed on the user.
+ *   - Positive X coordinate going toward user's facing.
+ *   - Positive Y coordinate going up.
+ *
+ * * Sprite_ProjectileLMBS
+ * - [json property file name]
+ * - Create a projectile that move straight to specified direction. json property file
+ * is placed under data/projectiles/ directory. For detailed information about json
+ * file, see ProjectileTemplate.json and ProjectileSchema.json.
+ 
+ * * Sprite_GravityProjectileLMBS
+ * - [json property file name]
+ * - Create a projectile that move toward a initial direction and affected by a specified
+ * gravity while travelling.json property file is placed under data/projectiles/ directory.
+ * For detailed information about json * file, see GravityProjectileTemplate.json and 
+ * GravityProjectileSchema.json.
+
+ * * Sprite_AnimationLMBS
+ * - [origin],[dx],[dy],[timingFileName],[animationId],[animatinoDelay],[animationMirror],[followOrigin]
+ * - Create a projectile plays animation in a specified position that can damage target
+ * in rects described in a json file. [origin] can be one of the following: user, target and
+ * screen. user set the coordinate space's (0,0) position on the user of skill, and target
+ * set the origin on the target of user, and screen set the origin at 0,0 of the battle field.
+ * Also, y-coordinate is going down in screen mode.
+ * [dx],[dy] refers to the displacement of animation from the origin. [timingFileName] is the
+ * json file that contains information of rectangles that represents the damaging area of
+ * the animation. File is placed under data/animations/, and is created through LMBS-Editor.
+ * [animationId] is the id of animation, [animationDelay] refers to the frames this animation
+ * will wait to display, [animationMirror] refers to do this animation is played as mirrored.
+ * [followOrigin] means do this animation will change its position when origin's coordinate
+ * is changed.
  */
 
 //-----------------------------------------------------------------------------
@@ -425,6 +503,7 @@ Kien.LMBS_Core.defaultBattleEventPause = parseInt(Kien.LMBS_Core.parameters["Pau
 Kien.LMBS_Core.inputKeepTime = parseInt(Kien.LMBS_Core.parameters["Input Keep Time"]);
 Kien.LMBS_Core.cursorAnimationSpeed = parseInt(Kien.LMBS_Core.parameters["Cursor Animation Speed"]);
 Kien.LMBS_Core.cursorFrameCount = parseInt(Kien.LMBS_Core.parameters["Cursor Frame Count"]);
+Kien.LMBS_Core.defaultHitstopLength = parseInt(Kien.LMBS_Core.parameters["Default Hitstop Length"])
 Kien.LMBS_Core.gaurdKey = parseInt(Kien.LMBS_Core.parameters["Guard Key"]);
 Kien.LMBS_Core.previousTargetKey = parseInt(Kien.LMBS_Core.parameters["Previous Target Key"]);
 Kien.LMBS_Core.nextTargetKey = parseInt(Kien.LMBS_Core.parameters["Next Target Key"]);
@@ -759,7 +838,7 @@ Kien.LMBS_Core.loadMotionList = function(array, list) {
         }
     }
     if (tree.length > 0) {
-        console.log("Error! Skill Motion have too little EndIf statement! Something will go wrong.")
+        console.log("Error! Skill Motion have too little End statement! Something will go wrong.")
     }
 }
 
@@ -805,7 +884,7 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "type" : "endinput"
         });
     }
-    if(line.match(/StartDamage ([+-]?\d+)\,([+-]?\d+)\,(\d+)\,(\d+)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)/)) {
+    if(line.match(/StartDamage ([+-]?\d+)\,([+-]?\d+)\,(\d+)\,(\d+)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)\,(\d+)/)) {
         list.push({
             "type" : "startdamage",
             "rect" : {"x":     parseFloat(RegExp.$1,10),
@@ -814,7 +893,8 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
                       "height":parseFloat(RegExp.$4,10)},
             "damage": parseFloat(RegExp.$5),
             "knockback": {"x": parseFloat(RegExp.$6,10),"y": parseFloat(RegExp.$7,10)},
-            "knockdir": RegExp.$8 ? parseInt(RegExp.$8,10) : 0
+            "knockdir": parseInt(RegExp.$8,10),
+            "knocklength": parseInt(RegExp.$8,10)
         });
     }
     if(line.match(/EndDamage/)) {
@@ -845,12 +925,13 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "dur" : 1
         });
     }
-    if(line.match(/ApplyDamage (\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)/)){
+    if(line.match(/ApplyDamage (\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)\,(\d+)/)){
         list.push({
             "type" : "applydamage",
             "damage" : parseFloat(RegExp.$1),
             "knockback": {"x" : parseFloat(RegExp.$2,10), "y" : parseFloat(RegExp.$3,10)},
-            "knockdir" : parseInt(RegExp.$4,10)
+            "knockdir" : parseInt(RegExp.$4,10),
+            "knocklength" : parseInt(RegExp.$5,10)
         });
     }
     if(line.match(/WaitCast (\d+)/)){
@@ -892,9 +973,9 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
         });
         cur.newDepth = true;
     }
-    if (line.match(/^EndIf/)){
+    if (line.match(/^End$/)){
         list.push({
-            "type" : "endif"
+            "type" : "end"
         });
         cur.finish = true;
     }
@@ -944,6 +1025,11 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "channel" : parseInt(RegExp.$1, 10)
         })
     }
+    if (line.match(/Else$/)) {
+        list.push({
+            "type" : "else"
+        })
+    }
     Kien.LMBS_Core.loadExtraLine(line,cur);
 }
 
@@ -966,6 +1052,17 @@ Kien.LMBS_Core.loadJSONEvaluableValue = function(value, thisObj) {
     }
 }
 
+Kien.LMBS_Core.executeWithEnvironment = function(expression, thisObj) {
+    return (function() {return eval(expression);}).call(thisObj);
+}
+
+Kien.LMBS_Core.fieldToScreenX = function(x) {
+    return x;
+}
+
+Kien.LMBS_Core.fieldToScreenY = function(y) {
+    return Kien.LMBS_Core.battleY - y;
+}
 
 //-----------------------------------------------------------------------------
 // Array
@@ -1509,8 +1606,8 @@ function AbstractMotionDescriptor() {
     this.initialize.apply(this, arguments);
 }
 
-AbstractMotionDescriptor.prototype.initialize = function(battler, item) {
-    this._battler = battler;
+AbstractMotionDescriptor.prototype.initialize = function(target, item) {
+    this._target = target;
     this._finish = false;
     this._waitCount = 0;
     this._item = item;
@@ -1533,42 +1630,13 @@ AbstractMotionDescriptor.prototype.isFinish = function() {
 }
 
 AbstractMotionDescriptor.prototype.release = function() {
-    this._battler = null;
+    this._target = null;
 }
 
-// Defined as a "Default" condition, override this function if needed.
-AbstractMotionDescriptor.prototype.canUse = function(battler, obj) {
-    var bool = false
-    if(DataManager.isSkill(obj)){
-        bool = battler.meetsSkillConditions(obj);
-    } else if (DataManager.isItem(obj)){
-        bool = battler.meetsItemConditions(obj);
-    }
-    if(!bool){
-        return bool;
-    }
-    bool = (!battler.isMotion() || battler._waitInput);
-    if(!bool){
-        return bool;
-    }
-    bool = !battler.isKnockback() && !battler.isGuard();
-    if (!bool) {
-        return bool;
-    }
-    if(battler._actions[0] && battler.isMotion()){
-        var now = battler._actions[0].item();
-        var pri1 = Kien.LMBS_Core.getSkillPriority(now);
-        var pri2 = Kien.LMBS_Core.getSkillPriority(obj);
-        bool = (pri1 != -1 ) && ((pri1 == 0 && pri2 == 0) || (pri2 > pri1) || (pri2 < 0));
-    }
-    if (!bool){
-        return bool;
-    }
-    if (!battler.isGround()) {
-        bool = obj.meta["Aerial Cast"] ? true : false ;
-    }
-    return bool;
-}
+//-----------------------------------------------------------------------------
+// BasicMotionDescriptor
+//
+// Motion descriptor contains only basic movements.
 
 //-----------------------------------------------------------------------------
 // DefaultMotionDescriptor
@@ -1584,9 +1652,11 @@ DefaultMotionDescriptor.prototype.constructor = DefaultMotionDescriptor;
 
 DefaultMotionDescriptor.prototype.initialize = function (battler, item) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
+    this._battler = this._target;
     this._stoppedAi = false;
     this._childDescriptor = null;
     this._showingMessage = [];
+    this._skillVariables = {};
     var item = this._item;
     if (!this._battler.isGround()) {
         var id = parseInt(item.meta["Aerial Cast"],10);
@@ -1596,6 +1666,7 @@ DefaultMotionDescriptor.prototype.initialize = function (battler, item) {
         }
     }
     this._processingMotionList = [];
+    this._motionIndex = 0;
     this._motionList = Kien.LMBS_Core.createMotionListFromNote(item);
     if (!this._skillToBeCast) {
         if (DataManager.isSkill(item)) {
@@ -1624,16 +1695,30 @@ DefaultMotionDescriptor.prototype.update = function(){
             return;
         }
     }
-    if (this._motionList.length > 0 && (!this.motionWaiting())){
-        var obj = this._motionList.shift();
+    if (this._motionList.length > this._motionIndex && (!this.motionWaiting())){
+        var obj = Object.create(this._motionList[this._motionIndex]);
         while(obj){
-            obj = (this.processMotion(obj) ? undefined : this._motionList.shift());
+            if (this.processMotion(obj)) {
+                this._motionIndex++;
+                obj = undefined;
+            } else {
+                if (this._motionList[++this._motionIndex]) {
+                    obj = Object.create(this._motionList[this._motionIndex]);
+                } else {
+                    obj = undefined;
+                }
+            }
         }
     }
     this.updateProcessingMotion();
-    if(this._motionList.length === 0 && this._processingMotionList.length === 0){
+    if(!this.isProcessing()){
         this._finish = true;
     }
+}
+
+DefaultMotionDescriptor.prototype.isProcessing = function() {
+    return this._motionList.length > this._motionIndex || this._processingMotionList.length > 0 ||
+        this._childDescriptor;
 }
 
 DefaultMotionDescriptor.prototype.processMotionCommandpose = function(obj) {
@@ -1710,6 +1795,7 @@ DefaultMotionDescriptor.prototype.processMotionCommandapplydamage = function(obj
         this._battler._actions[0]._damagePercentage = obj.damage;
         this._battler._damageInfo.knockback = obj.knockback;
         this._battler._damageInfo.knockdir = obj.knockdir;
+        this._battler._damageInfo.knocklength = obj.knocklength;
         this._battler.forceDamage(this._battler._target);
         if (dmg){
             this._battler._actions[0]._damagePercentage = oldd;
@@ -1778,27 +1864,27 @@ DefaultMotionDescriptor.prototype.processMotionCommandstartallai = function(obj)
 
 DefaultMotionDescriptor.prototype.processMotionCommandif = function(obj) {
     // Something similar to default damage formula :p
-    var a = this._battler;
-    var b = a._target;
-    var v = $gameVariables._data;
-    if (eval(obj.expression)){
+    var thisObj = this._battler.getEvaluateObjects()
+    if (Kien.LMBS_Core.executeWithEnvironment(obj.expression, thisObj)){
         this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, obj.list);
         this._childDescriptor.parent = this;
+        return true;
+    } else {
+        var elseindex = obj.list.findIndex(function(command) {
+            return command.type === "else";
+        })
+        if (elseindex >= 0) {
+            var elselist = obj.list.filter(function(c,i) {
+                return i > elseindex;
+            })
+            this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, elselist);
+            this._childDescriptor.parent = this;
+            return true;
+        }
     }
 }
 
-DefaultMotionDescriptor.prototype.processMotionCommandif = function(obj) {
-    // Something similar to default damage formula :p
-    var a = this._battler;
-    var b = a._target;
-    var v = $gameVariables._data;
-    if (eval(obj.expression)){
-        this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, obj.list);
-        this._childDescriptor.parent = this;
-    }
-}
-
-DefaultMotionDescriptor.prototype.processMotionCommandendif = function(obj) {
+DefaultMotionDescriptor.prototype.processMotionCommandend = function(obj) {
 }
 
 DefaultMotionDescriptor.prototype.processMotionCommandchangeweapon = function(obj) {
@@ -1850,6 +1936,10 @@ DefaultMotionDescriptor.prototype.processMotionCommandhidemessage = function(obj
                 $gameTemp.removeBattleMessage(obj.channel);
             }
             delete this._showingMessage[obj.channel];
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandevaluate = function(obj) {
+    Kien.LMBS_Core.executeWithEnvironment(obj.expression, this._Battler.getEvaluateObjects());
 }
 
 // Process motion executing in list
@@ -1967,6 +2057,40 @@ DefaultMotionDescriptor.prototype.motionWaiting = function() {
     }) !== undefined);
 }
 
+// Defined as a "Default" condition, override this function if needed.
+DefaultMotionDescriptor.prototype.canUse = function(battler, obj) {
+    var bool = false
+    if(DataManager.isSkill(obj)){
+        bool = battler.meetsSkillConditions(obj);
+    } else if (DataManager.isItem(obj)){
+        bool = battler.meetsItemConditions(obj);
+    }
+    if(!bool){
+        return bool;
+    }
+    bool = (!battler.isMotion() || battler._waitInput);
+    if(!bool){
+        return bool;
+    }
+    bool = !battler.isKnockback() && !battler.isGuard();
+    if (!bool) {
+        return bool;
+    }
+    if(battler._actions[0] && battler.isMotion()){
+        var now = battler._actions[0].item();
+        var pri1 = Kien.LMBS_Core.getSkillPriority(now);
+        var pri2 = Kien.LMBS_Core.getSkillPriority(obj);
+        bool = (pri1 != -1 ) && ((pri1 == 0 && pri2 == 0) || (pri2 > pri1) || (pri2 < 0));
+    }
+    if (!bool){
+        return bool;
+    }
+    if (!battler.isGround()) {
+        bool = obj.meta["Aerial Cast"] ? true : false ;
+    }
+    return bool;
+}
+
 //-----------------------------------------------------------------------------
 // ChildDefaultMotionDescriptor
 //
@@ -1979,16 +2103,32 @@ function ChildDefaultMotionDescriptor() {
 ChildDefaultMotionDescriptor.prototype = Object.create(DefaultMotionDescriptor.prototype);
 ChildDefaultMotionDescriptor.prototype.constructor = ChildDefaultMotionDescriptor;
 
+Object.defineProperty(ChildDefaultMotionDescriptor.prototype, "_skillVariables" ,{
+    get: function() {
+        if (this.parent) { 
+            return this.parent._skillVariables;
+        } else {
+            return {};
+        }
+    }
+});
+
 ChildDefaultMotionDescriptor.prototype.initialize = function (battler, item, list) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
+    this._battler = battler;
     this._stoppedAi = false;
     this._processingMotionList = [];
     this._motionList = list;
     this._childDescriptor = null;
+    this._motionIndex = 0;
     this.parent = null;
 }
 
-DefaultMotionDescriptor.prototype.processMotionCommandendif = function(obj) {
+DefaultMotionDescriptor.prototype.processMotionCommandend = function(obj) {
+    this._finish = true;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandelse = function(obj) {
     this._finish = true;
 }
 
@@ -2015,7 +2155,8 @@ Game_Battler.prototype.initMembers = function(){
 	this._fallCount = 0;
     this._knockback = {
         "x": 0,
-        "y": 0
+        "y": 0,
+        "length" : 0
     };
     this._knockdir = 0;
     this._moveSpeed = 4;
@@ -2043,7 +2184,7 @@ Game_Battler.prototype.initMembers = function(){
     this._battleStart = false; // is the battle started or not
     this._forcePose = null; // pose that is forced
     this._forceWaitCount = 0; // count for hit-stop.
-    this._hitStopLength = 15; // Length of hit-stop.
+    this._hitStopLength = Kien.LMBS_Core.defaultHitstopLength; // Length of hit-stop.
     this._knockbacking = false; // Is knockback or not
     this.clearCurrentHitCount();
     this.clearChainCount();
@@ -2175,7 +2316,7 @@ Game_Battler.prototype.isOpaque = function() {
 };
 
 Game_Battler.prototype.screenY = function(){
-    return Kien.LMBS_Core.battleY - this._battleY;
+    return Kien.LMBS_Core.fieldToScreenY(this._battleY);
 };
 
 Kien.LMBS_Core.Game_Battler_refresh = Game_Battler.prototype.refresh;
@@ -2252,12 +2393,13 @@ Game_Battler.prototype.jump = function(dir) {
     this._jumpData.sideSpeed = this.moveSpeed() * (dir == 4 ? -1 : dir == 6 ? 1 : 0) ;
 }
 
-Game_Battler.prototype.knockback = function(knockback, knockdir){
+Game_Battler.prototype.knockback = function(knockback, knockdir, knocklength){
     if (!this._guard){
         this.endMotion();
         this.clearCurrentHitCount();
         this._knockback.x = knockback.x;
         this._knockback.y = knockback.y;
+        this._knockback.length = knocklength;
         this._knockdir = knockdir;
         this._knockbacking = true;
         this._fallCount = 0;
@@ -2288,7 +2430,10 @@ Game_Battler.prototype.updateKnockback = function() {
                 this._knockback.y = 0;
             }
         }
-        if (this.isGround()) {
+        if (this._knockback.length > 0) {
+            this._knockback.length -= 1;
+        }
+        if (this.isGround() && this._knockback.length <= 0) {
             this._knockbacking = false;
             this.clearChainCount();
         }
@@ -2711,7 +2856,7 @@ Game_Battler.prototype.canUseLMBS = function(obj) {
     if (klass) {
         return klass.prototype.canUse(this, obj);
     } else {
-        return AbstractMotionDescriptor.prototype.canUse(this, obj);
+        return DefaultMotionDescriptor.prototype.canUse(this, obj);
     }
 };
 
@@ -2721,7 +2866,7 @@ Game_Battler.prototype.dealDamage = function(target) {
         var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
         target.startDamagePopup();
         if (this._actions[0].isDamage() || this._actions[0].isDrain()){
-            target.knockback(this._damageInfo.knockback, dir);
+            target.knockback(this._damageInfo.knockback, dir, this._damageInfo.knocklength);
             target.onHitted(this);
             this.onHit(target);
         }
@@ -2737,7 +2882,7 @@ Game_Battler.prototype.forceDamage = function(target) {
     var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
     target.startDamagePopup();
     if (this._actions[0].isDamage() || this._actions[0].isDrain()){
-        target.knockback(this._damageInfo.knockback, dir);
+        target.knockback(this._damageInfo.knockback, dir, this._damageInfo.knocklength);
         target.onHitted(this);
         this.onHit(target);
     }
@@ -2765,6 +2910,15 @@ Game_Battler.prototype.onHitted = function(user) {
 
 Game_Battler.prototype.getWeaponName = function() {
     return this._weaponName;
+}
+
+Game_Battler.prototype.getEvaluateObjects = function() {
+    var obj = {};
+    obj.v = $gameVariables._data;
+    obj.a = this;
+    obj.b = this._target;
+    obj.sv = this._skillMotionDescriptor ? this._skillMotionDescriptor._skillVariables : {};
+    return obj;
 }
 
 //-----------------------------------------------------------------------------
@@ -3494,6 +3648,7 @@ Game_LMBSAiEnemyBase.prototype.update = function() {
 Kien.LMBS_Core.Game_Actor_initMembers = Game_Actor.prototype.initMembers;
 Game_Actor.prototype.initMembers = function() {
     Kien.LMBS_Core.Game_Actor_initMembers.call(this);
+    this._availableAttacks = [];
     this._attackSets = {}; // Preloaded Attack Motion Sets. ["dir"] shows different direction.
     this._skillSets = {}; // Skills can performed with skill button. ["dir"] shows different direction.
     this._inputData = {};
@@ -3711,6 +3866,23 @@ Game_Actor.prototype.updateInputData = function() {
     } else if (Input.isPressed('LMBSguard')) {
         this._inputData.reservedInput = 'LMBSguard';
         this._inputData.inputKeepTime = Kien.LMBS_Core.inputKeepTime;
+    } else if (Input.dir4 != 0) {
+        this._inputData.movementReservedInputDir = Input.dir4;
+        if (Input.isPressed("up")) {
+            this._inputData.movementReservedInput = "jump";
+            this._inputData.movementReservedInputDir = Input.isPressed('left') ? 4 : Input.isPressed('right') ? 6 : 0;
+        } else if (Input.isTriggered("left")) {
+            this._inputData.movementReservedInput = "left";
+        } else if (Input.isTriggered("right")) {
+            this._inputData.movementReservedInput = "right";
+        } else {
+            this._inputData.movementReservedInput = "move";
+        }
+    }
+    if (Input.isTriggered("LMBSprevioustarget")) {
+        this._inputData.utilInput = "ptarget";
+    } else if (Input.isTriggered("LMBSnexttarget")) {
+        this._inputData.utilInput = "ntarget";
     }
 }
 
@@ -3726,7 +3898,13 @@ Game_Actor.prototype.updateInputGuard = function() {
 
 Game_Actor.prototype.updateInputAttack = function() {
     if(this._inputData.reservedInput ==='ok' && this.isInputAvailable()) {
-        this.useNormalAttack(Input.dir4);
+        var d4 = this._inputData.reservedInputDir;
+        if(d4 == 4){
+            d4 = (this._facing ? 4 : 6)
+        } else if (d4 == 6){
+            d4 = (this._facing ? 6 : 4)
+        }
+        this.useNormalAttack(d4);
         this._inputData.reservedInput = null;
         this._inputData.reservedInputDir = 0;
         this._inputData.inputKeepTime = -1;
@@ -3735,78 +3913,97 @@ Game_Actor.prototype.updateInputAttack = function() {
 
 Game_Actor.prototype.updateInputSkill = function() {
     if(this._inputData.reservedInput ==='cancel' && this.isInputAvailable()) {
-        this._inputData.reservedInput = null;
-        this._inputData.reservedInputDir = 0;
-        this._inputData.inputKeepTime = -1;
-        var d4 = Input.dir4;
+        var d4 = this._inputData.reservedInputDir;
         if(d4 == 4){
             d4 = (this._facing ? 4 : 6)
         } else if (d4 == 6){
             d4 = (this._facing ? 6 : 4)
         }
         this.useRegistedSkill(d4);
+        this._inputData.reservedInput = null;
+        this._inputData.reservedInputDir = 0;
+        this._inputData.inputKeepTime = -1;
     }
 }
 
 Game_Actor.prototype.updateInputTarget = function() {
-    if (Input.isTriggered("LMBSprevioustarget")) {
+    if (this._inputData.utilInput == "ptarget") {
         if (this._target) {
             var temp = this._target;
             do  {
                 this._target = BattleManager.previousTarget(this._target);
             } while (!(this.isTargetAvailable(this._target) || this._target === temp));
         }
-    } else if (Input.isTriggered("LMBSnexttarget")) {
+        this._inputData.utilInput = null;
+    } else if (this._inputData.utilInput == "ntarget") {
         if (this._target) {
             var temp = this._target;
             do  {
                 this._target = BattleManager.nextTarget(this._target);
             } while (!(this.isTargetAvailable(this._target) || this._target === temp))
         }
+        this._inputData.utilInput = null;
     }
 }
 
 Game_Actor.prototype.updateInputMovement = function() {
     if(this.isActable()){
-        if(Input.isPressed('left')){
-            this.moveWith(-(this.moveSpeed()));
-        } else if (Input.isPressed('right')){
-            this.moveWith(this.moveSpeed());
+        if (this._inputData.movementReservedInput == "move") {
+            if (this._inputData.movementReservedInputDir == 4){
+                this.moveLeft();
+            } else if (this._inputData.movementReservedInputDir == 6){
+                this.moveRight();
+            }  else {
+                this._dash = false;
+            }
+            this._inputData.movementReservedInput = null;
+            this._inputData.movementReservedInputDir = 0;
         } else {
             this._dash = false;
         }
     }
 }
 
+Game_Actor.prototype.moveLeft = function() {
+    this.moveWith(-(this.moveSpeed()));
+}
+
+Game_Actor.prototype.moveRight = function() {
+    this.moveWith(this.moveSpeed());
+}
+
 Game_Actor.prototype.updateInputJump = function() {
-    if(Input.isPressed('up') && this.isActable()){
+    if (this._inputData.movementReservedInput == "jump" && this.isActable()){
         this._inputData.jumpInputDur++;
         if (this._inputData.jumpInputDur == Kien.LMBS_Core.inputDelay){
-            var dir = Input.isPressed('left') ? 4 : Input.isPressed('right') ? 6 : 0
+            var dir = this._inputData.movementReservedInputDir;
             this.jump(dir);
             this._inputData.jumpInputDur = 0;
         }
+        this._inputData.movementReservedInput = null;
     } else {
         this._inputData.jumpInputDur = 0;
     }
 }
 
 Game_Actor.prototype.updateInputDash = function() {
-    if (Input.isTriggered('left')){
+    if (this._inputData.movementReservedInput == "left"){
         if(this._inputData.lastDir == 4){
             this._dash = true
         } else {
             this._inputData.lastDir = 4;
             this._inputData.lastDirPast = 0;
         }
+        this._inputData.movementReservedInput = "move";
     }
-    if (Input.isTriggered('right')){
+    if (this._inputData.movementReservedInput == "right"){
         if(this._inputData.lastDir == 6){
             this._dash = true;
         } else {
             this._inputData.lastDir = 6;
             this._inputData.lastDirPast = 0;
         }
+        this._inputData.movementReservedInput = "move";
     }
 }
 
@@ -4138,8 +4335,8 @@ Game_Enemy.prototype.screenX = function(){
     return $gameSystem._LMBSEnabled ? this._battleX : this._screenX;
 };
 
-Game_Enemy .prototype.screenY = function(){
-    return $gameSystem._LMBSEnabled ? Kien.LMBS_Core.battleY - this._battleY : this._screenY;
+Game_Enemy.prototype.screenY = function(){
+    return $gameSystem._LMBSEnabled ? Game_Battler.prototype.screenY.call(this) : this._screenY;
 };
 
 Kien.LMBS_Core.Game_Enemy_setup = Game_Enemy.prototype.setup;
@@ -4339,7 +4536,7 @@ Game_Enemy.prototype.updateAiAction = function() {
 }
 
 Game_Enemy.prototype.startAiIdle = function(canMove) {
-    var obj = {'duration' :Math.randomInt(90) + 60};
+    var obj = {'duration' :Math.randomInt(15) + 10};
     if(canMove){
         obj.moveDur = Math.randomInt(15) + 15;
         obj.dir = Math.randomInt(2) == 0 ? -1 : 1;
@@ -5528,7 +5725,7 @@ Sprite_WeaponLMBS.prototype.initialize = function(parentSprite){
 
 Sprite_WeaponLMBS.prototype.setup = function(filename) {
     this._name = filename;
-    if (filename.length === 0) {
+    if (!filename || filename.length === 0) {
         this.bitmap = null;
         this._prop = null;
         return;
@@ -5650,12 +5847,14 @@ Sprite_ProjectileLMBS.prototype.initialize = function(object, sprite){
 }
 
 Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
+    var thisObject = this._battler.getEvaluateObjects();
     this._xspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.xspeed,this) || 3;
     this._yspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.yspeed,this) || 0;
     this._damagePer = Kien.LMBS_Core.loadJSONEvaluableValue(param.damagePercent,this) || 1;
     this._bitmapName = param.filename || "";
     this._knockbackx = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackx,this) || 5;
     this._knockbacky = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbacky,this) || 5;
+    this._knocklength = Kien.LMBS_Core.loadJSONEvaluableValue(param.knocklength,this) || 5;
     this._knockbackdir = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackdir,this) || 0;
     this._pierce = Kien.LMBS_Core.loadJSONEvaluableValue(param.pierce,this) || 1;
     this._dangle = param.angleFollowDirection || false;
@@ -5666,7 +5865,7 @@ Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
     this._animationCount = 0;
     this.updateBitmap();
     this.x = this._userSprite._battler.screenX() + (param.dx ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dx,this) : 0);
-    this.y = this._userSprite._battler.screenY() + (param.dy ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dy,this) : 0);
+    this.y = this._userSprite._battler.screenY() - (param.dy ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dy,this) : 0);
     this._action._damagePercentage = this._damagePer;
     this.visible = true;
     this._isLoaded = true;
@@ -5676,7 +5875,7 @@ Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
 }
 
 Sprite_ProjectileLMBS.prototype.updateBitmap = function() {
-    if(!this.bimtap){
+    if(!this.bimtap && this._bitmapName){
         this.bitmap = ImageManager.loadProjectile(this._bitmapName);
         this.obtainImageProperty();
     }
@@ -5686,10 +5885,10 @@ Sprite_ProjectileLMBS.prototype.obtainImageProperty = function() {
     var arr = this._bitmapName.match(/(.+?)(?:\[(.*)\])?$/)
     if (arr[2]) {
         var params = arr[2];
-        if (params.match(/F(\d+)/)) {
+        if (params.match(/F(\d+)/i)) {
             this._frameNumber = parseInt(RegExp.$1,10);
         }
-        if (params.match(/S(\d+)/)) {
+        if (params.match(/S(\d+)/i)) {
             this._animationSpeed = parseInt(RegExp.$1,10);
         }
     }
@@ -5742,7 +5941,7 @@ Sprite_ProjectileLMBS.prototype.updateDamage = function() {
                 this._action.apply(enemy._battler);
                 var dir = this._knockbackdir ? ( 5 - this._direction ) : ( 5 + this._direction );
                 if (this._action.isDamage() || this._action.isDrain()){
-                    enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},dir);
+                    enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},dir, this._knocklength);
                     enemy._battler.onHitted(this._battler);
                     this._battler.onHit(enemy._battler);
                 }
@@ -5817,6 +6016,10 @@ Sprite_GravityProjectileLMBS.prototype.outOfBound = function() {
 // Extends from Sprite_Animation, with ability to load json timing and
 // process it.
 
+/*
+    
+*/
+
 function Sprite_AnimationLMBS() {
     this.initialize.apply(this, arguments);
 }
@@ -5826,41 +6029,47 @@ Sprite_AnimationLMBS.prototype.constructor = Sprite_AnimationLMBS;
 
 Sprite_AnimationLMBS.prototype.initialize = function(object, sprite){
     Sprite_Animation.prototype.initialize.call(this);
-    var parameters = object.parameters;
-    //                    origin,    dx,         dy,    jsoname   id,  delay,      mirror,          follow
-    if (parameters.match(/(.+?)\,([+-]?\d+)\,([+-]?\d+)\,(.*?)\,(\d+)\,(\d+)\,(true|false|null)\,(true|false)/)){
-        var origin = RegExp.$1;
-        var dx = parseInt(RegExp.$2,10);
-        var dy = parseInt(RegExp.$3,10);
-        var filename = RegExp.$4;
-        if (filename.length > 0) {
-            var obj = Kien.LMBS_Core.createAnimationTimingFromName(filename);
-        }
-        var animationId = parseInt(RegExp.$5,10);
-        var delay = parseInt(RegExp.$6,10);
-        var mirror = eval(RegExp.$7);
-        var follow = eval(RegExp.$8);
-    }
-    this._timingArray = obj || {};
-    this._originName = origin || "target";
-    this._dx = dx || 0;
-    this._dy = dy || 0;
-    this._animation = $dataAnimations[animationId] || null;
-    this._delay = delay || 0;
-    this._mirror = mirror
-    this._follow = follow || false;
-    this._targetSprite = null;
+    this._isLoaded = false;
+    this._targetSprite =  sprite.targetSprite();
+    this._target = this._targetSprite;
     this._finish = false;
     this._userSprite = sprite;
     this._battler = sprite._battler;
-    this._targetSprite =  sprite.targetSprite();
+    this._action = new Game_Action(this._battler);
+    this._action.setItemObject(object.item);
+    var name = object.parameters;
+    var xhr = new XMLHttpRequest();
+    var url = "data/animations/" + name + ".json";
+    xhr.open('GET', url, false);
+    xhr.overrideMimeType('application/json');
+    xhr.onload = function() {
+        if (xhr.status < 400) {
+            obj = JSON.parse(xhr.responseText);
+            this.onJSONloaded(obj);
+        }
+    }.bind(this); 
+    xhr.onerror = function() {
+        DataManager._errorUrl = DataManager._errorUrl || url;
+    };
+    xhr.send();
+}
+
+Sprite_AnimationLMBS.prototype.onJSONloaded = function(param) {
+    var thisObject = this._battler.getEvaluateObjects();
+    this._timingArray = param.timing || {};
+    this._xOrigin = param.x.origin || "target";
+    this._yOrigin = param.y.origin || "target";
+    this._dx = Kien.LMBS_Core.loadJSONEvaluableValue(param.x.value,this) || 0;
+    this._dy = Kien.LMBS_Core.loadJSONEvaluableValue(param.y.value,this) || 0;
+    this._animation = $dataAnimations[param.animationId] || null;
+    this._delay = param.delay || 0;
+    this._mirror = param.mirror || false
+    this._follow = param.follow || false;
     this._animationPosition = {
         "x" : this.animationX(),
         "y" : this.animationY(),
         "height" : this._targetSprite.height
     }
-    this._action = new Game_Action(this._battler);
-    this._action.setItemObject(object.item);
     if (this._mirror === null) {
         this._mirror = !this._battler._facing;
     }
@@ -5872,6 +6081,7 @@ Sprite_AnimationLMBS.prototype.initialize = function(object, sprite){
     } else {
         this._finish = true;
     }
+    this._isLoaded = true;
 }
 
 Sprite_AnimationLMBS.prototype.updateCellSprite = function(sprite, cell) {
@@ -5906,25 +6116,29 @@ Sprite_AnimationLMBS.prototype.initMembers = function() {
 
 
 Sprite_AnimationLMBS.prototype.animationX = function() {
-    switch (this._originName) {
+    switch (this._xOrigin) {
         case "target":
             return (this._targetSprite._battler.screenX() + this._dx);
         case "user":
             return (this._userSprite._battler.screenX() + this._dx);
         case "screen":
             return (this._dx);
+        case "field":
+            return (Kien.LMBS_Core.fieldToScreenX(this._dy));
     }
     return 0;
 }
 
 Sprite_AnimationLMBS.prototype.animationY = function() {
-    switch (this._originName) {
+    switch (this._yOrigin) {
         case "target":
-            return (this._targetSprite._battler.screenY() + this._dy);
+            return (this._targetSprite._battler.screenY() - this._dy);
         case "user":
-            return (this._userSprite._battler.screenY() + this._dy);
+            return (this._userSprite._battler.screenY() - this._dy);
         case "screen":
             return (this._dy);
+        case "field":
+            return (Kien.LMBS_Core.fieldToScreenY(this._dy));
     }
     return 0;
 }
@@ -5935,13 +6149,15 @@ Sprite_AnimationLMBS.prototype.removeLMBS = function() {
 
 
 Sprite_AnimationLMBS.prototype.updateMain = function() {
-    Sprite_Animation.prototype.updateMain.call(this);
-    this.updateTestData();
-    if (this.isPlaying() && this.isReady() && this._delay == 0) {
-        this.updateDamage();
-    }
-    if(!this.isPlaying()){
-        this._finish = true;
+    if (this._isLoaded) {
+        Sprite_Animation.prototype.updateMain.call(this);
+        this.updateTestData();
+        if (this.isPlaying() && this.isReady() && this._delay == 0) {
+            this.updateDamage();
+        }
+        if(!this.isPlaying()){
+            this._finish = true;
+        }
     }
 }
 
@@ -5966,7 +6182,7 @@ Sprite_AnimationLMBS.prototype.updateDamage = function() {
             this._action.apply(enemy._battler);
             var dir = obj.knockdir ? (this._battler._facing ? 4 : 6) : (this._battler._facing ? 6 : 4);
             if (this._action.isDamage() || this._action.isDrain()){
-                enemy._battler.knockback(obj.knockback,dir);
+                enemy._battler.knockback(obj.knockback,dir, obj.knocklength);
                 enemy._battler.onHitted(this._battler);
                 this._battler.onHit(enemy._battler);
             }
@@ -5994,11 +6210,20 @@ Sprite_AnimationLMBS.prototype.updatePosition = function() {
     }
     this.x = this._animationPosition.x;
     this.y = this._animationPosition.y;
-    if (this._animation.position == 0){
-        this.y -= this._animationPosition.height;
-    }
-    if (this._animation.position == 1){
-        this.y -= this._animationPosition.height/2
+    if (this._yOrigin == "field" || this._yOrigin == "screen") {
+        // if (this._animationPosition == 0) {
+        //     this.anchor.y = 0;
+        // }
+        // if (this._animationPosition == 2) {
+        //     this.anchor.y = 1;
+        // }
+    } else {
+        if (this._animation.position == 0){
+            this.y -= this._animationPosition.height;
+        }
+        if (this._animation.position == 1){
+            this.y -= this._animationPosition.height/2
+        }
     }
 
 };
@@ -6017,11 +6242,13 @@ Sprite_AnimationLMBS.prototype.updateTiming = function() {
         var array = this._timingArray[index];
         for (var i = 0; i < array.length;i++){
             var obj = Object.create(array[i]);
-            obj.hitted = [];
-            if (obj.knockdir == 0){
-                obj.knockdir = this._battler._facing ? 6 : 4;
+            if (obj.type == "damage") {
+                obj.hitted = [];
+                if (obj.knockdir == 0){
+                    obj.knockdir = this._battler._facing ? 6 : 4;
+                }
+                this._processingTiming.push(obj);
             }
-            this._processingTiming.push(obj);
         }
     }
 }
@@ -6762,6 +6989,7 @@ Scene_SkillConfig.prototype.commandSkillConfig = function() {
 Scene_SkillConfig.prototype.item = function() {
     return this._itemWindow.item();
 };
+
 Scene_SkillConfig.prototype.onItemOk = function() {
     this.actor().setLastMenuSkill(this.item());
     var ext = this._skillConfigWindow.currentExt();
