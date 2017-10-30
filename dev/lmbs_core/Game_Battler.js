@@ -13,7 +13,8 @@ Game_Battler.prototype.initMembers = function(){
 	this._fallCount = 0;
     this._knockback = {
         "x": 0,
-        "y": 0
+        "y": 0,
+        "length" : 0
     };
     this._knockdir = 0;
     this._moveSpeed = 4;
@@ -41,7 +42,7 @@ Game_Battler.prototype.initMembers = function(){
     this._battleStart = false; // is the battle started or not
     this._forcePose = null; // pose that is forced
     this._forceWaitCount = 0; // count for hit-stop.
-    this._hitStopLength = 15; // Length of hit-stop.
+    this._hitStopLength = Kien.LMBS_Core.defaultHitstopLength; // Length of hit-stop.
     this._knockbacking = false; // Is knockback or not
     this.clearCurrentHitCount();
     this.clearChainCount();
@@ -173,7 +174,7 @@ Game_Battler.prototype.isOpaque = function() {
 };
 
 Game_Battler.prototype.screenY = function(){
-    return Kien.LMBS_Core.battleY - this._battleY;
+    return Kien.LMBS_Core.fieldToScreenY(this._battleY);
 };
 
 Kien.LMBS_Core.Game_Battler_refresh = Game_Battler.prototype.refresh;
@@ -250,12 +251,13 @@ Game_Battler.prototype.jump = function(dir) {
     this._jumpData.sideSpeed = this.moveSpeed() * (dir == 4 ? -1 : dir == 6 ? 1 : 0) ;
 }
 
-Game_Battler.prototype.knockback = function(knockback, knockdir){
+Game_Battler.prototype.knockback = function(knockback, knockdir, knocklength){
     if (!this._guard){
         this.endMotion();
         this.clearCurrentHitCount();
         this._knockback.x = knockback.x;
         this._knockback.y = knockback.y;
+        this._knockback.length = knocklength;
         this._knockdir = knockdir;
         this._knockbacking = true;
         this._fallCount = 0;
@@ -286,7 +288,10 @@ Game_Battler.prototype.updateKnockback = function() {
                 this._knockback.y = 0;
             }
         }
-        if (this.isGround()) {
+        if (this._knockback.length > 0) {
+            this._knockback.length -= 1;
+        }
+        if (this.isGround() && this._knockback.length <= 0) {
             this._knockbacking = false;
             this.clearChainCount();
         }
@@ -709,7 +714,7 @@ Game_Battler.prototype.canUseLMBS = function(obj) {
     if (klass) {
         return klass.prototype.canUse(this, obj);
     } else {
-        return AbstractMotionDescriptor.prototype.canUse(this, obj);
+        return DefaultMotionDescriptor.prototype.canUse(this, obj);
     }
 };
 
@@ -719,7 +724,7 @@ Game_Battler.prototype.dealDamage = function(target) {
         var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
         target.startDamagePopup();
         if (this._actions[0].isDamage() || this._actions[0].isDrain()){
-            target.knockback(this._damageInfo.knockback, dir);
+            target.knockback(this._damageInfo.knockback, dir, this._damageInfo.knocklength);
             target.onHitted(this);
             this.onHit(target);
         }
@@ -735,7 +740,7 @@ Game_Battler.prototype.forceDamage = function(target) {
     var dir = this._damageInfo.knockdir ? (this._facing ? 4 : 6) : (this._facing ? 6 : 4);
     target.startDamagePopup();
     if (this._actions[0].isDamage() || this._actions[0].isDrain()){
-        target.knockback(this._damageInfo.knockback, dir);
+        target.knockback(this._damageInfo.knockback, dir, this._damageInfo.knocklength);
         target.onHitted(this);
         this.onHit(target);
     }
@@ -763,4 +768,13 @@ Game_Battler.prototype.onHitted = function(user) {
 
 Game_Battler.prototype.getWeaponName = function() {
     return this._weaponName;
+}
+
+Game_Battler.prototype.getEvaluateObjects = function() {
+    var obj = {};
+    obj.v = $gameVariables._data;
+    obj.a = this;
+    obj.b = this._target;
+    obj.sv = this._skillMotionDescriptor ? this._skillMotionDescriptor._skillVariables : {};
+    return obj;
 }
