@@ -44,8 +44,8 @@ Game_Enemy.prototype.screenX = function(){
     return $gameSystem._LMBSEnabled ? this._battleX : this._screenX;
 };
 
-Game_Enemy .prototype.screenY = function(){
-    return $gameSystem._LMBSEnabled ? Kien.LMBS_Core.battleY - this._battleY : this._screenY;
+Game_Enemy.prototype.screenY = function(){
+    return $gameSystem._LMBSEnabled ? Game_Battler.prototype.screenY.call(this) : this._screenY;
 };
 
 Kien.LMBS_Core.Game_Enemy_setup = Game_Enemy.prototype.setup;
@@ -245,7 +245,7 @@ Game_Enemy.prototype.updateAiAction = function() {
 }
 
 Game_Enemy.prototype.startAiIdle = function(canMove) {
-    var obj = {'duration' :Math.randomInt(90) + 60};
+    var obj = {'duration' :Math.randomInt(15) + 10};
     if(canMove){
         obj.moveDur = Math.randomInt(15) + 15;
         obj.dir = Math.randomInt(2) == 0 ? -1 : 1;
