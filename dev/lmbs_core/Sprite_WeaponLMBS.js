@@ -23,7 +23,7 @@ Sprite_WeaponLMBS.prototype.initialize = function(parentSprite){
 
 Sprite_WeaponLMBS.prototype.setup = function(filename) {
     this._name = filename;
-    if (filename.length === 0) {
+    if (!filename || filename.length === 0) {
         this.bitmap = null;
         this._prop = null;
         return;
