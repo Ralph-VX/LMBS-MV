@@ -28,6 +28,7 @@ Kien.LMBS_Core.defaultBattleEventPause = parseInt(Kien.LMBS_Core.parameters["Pau
 Kien.LMBS_Core.inputKeepTime = parseInt(Kien.LMBS_Core.parameters["Input Keep Time"]);
 Kien.LMBS_Core.cursorAnimationSpeed = parseInt(Kien.LMBS_Core.parameters["Cursor Animation Speed"]);
 Kien.LMBS_Core.cursorFrameCount = parseInt(Kien.LMBS_Core.parameters["Cursor Frame Count"]);
+Kien.LMBS_Core.defaultHitstopLength = parseInt(Kien.LMBS_Core.parameters["Default Hitstop Length"])
 Kien.LMBS_Core.gaurdKey = parseInt(Kien.LMBS_Core.parameters["Guard Key"]);
 Kien.LMBS_Core.previousTargetKey = parseInt(Kien.LMBS_Core.parameters["Previous Target Key"]);
 Kien.LMBS_Core.nextTargetKey = parseInt(Kien.LMBS_Core.parameters["Next Target Key"]);
@@ -362,7 +363,7 @@ Kien.LMBS_Core.loadMotionList = function(array, list) {
         }
     }
     if (tree.length > 0) {
-        console.log("Error! Skill Motion have too little EndIf statement! Something will go wrong.")
+        console.log("Error! Skill Motion have too little End statement! Something will go wrong.")
     }
 }
 
@@ -408,7 +409,7 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "type" : "endinput"
         });
     }
-    if(line.match(/StartDamage ([+-]?\d+)\,([+-]?\d+)\,(\d+)\,(\d+)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)/)) {
+    if(line.match(/StartDamage ([+-]?\d+)\,([+-]?\d+)\,(\d+)\,(\d+)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)\,(\d+)/)) {
         list.push({
             "type" : "startdamage",
             "rect" : {"x":     parseFloat(RegExp.$1,10),
@@ -417,7 +418,8 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
                       "height":parseFloat(RegExp.$4,10)},
             "damage": parseFloat(RegExp.$5),
             "knockback": {"x": parseFloat(RegExp.$6,10),"y": parseFloat(RegExp.$7,10)},
-            "knockdir": RegExp.$8 ? parseInt(RegExp.$8,10) : 0
+            "knockdir": parseInt(RegExp.$8,10),
+            "knocklength": parseInt(RegExp.$8,10)
         });
     }
     if(line.match(/EndDamage/)) {
@@ -448,12 +450,13 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "dur" : 1
         });
     }
-    if(line.match(/ApplyDamage (\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)/)){
+    if(line.match(/ApplyDamage (\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+(?:\.\d+)?)\,(\d+)\,(\d+)/)){
         list.push({
             "type" : "applydamage",
             "damage" : parseFloat(RegExp.$1),
             "knockback": {"x" : parseFloat(RegExp.$2,10), "y" : parseFloat(RegExp.$3,10)},
-            "knockdir" : parseInt(RegExp.$4,10)
+            "knockdir" : parseInt(RegExp.$4,10),
+            "knocklength" : parseInt(RegExp.$5,10)
         });
     }
     if(line.match(/WaitCast (\d+)/)){
@@ -495,9 +498,9 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
         });
         cur.newDepth = true;
     }
-    if (line.match(/^EndIf/)){
+    if (line.match(/^End$/)){
         list.push({
-            "type" : "endif"
+            "type" : "end"
         });
         cur.finish = true;
     }
@@ -547,6 +550,11 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "channel" : parseInt(RegExp.$1, 10)
         })
     }
+    if (line.match(/Else$/)) {
+        list.push({
+            "type" : "else"
+        })
+    }
     Kien.LMBS_Core.loadExtraLine(line,cur);
 }
 
@@ -567,4 +575,16 @@ Kien.LMBS_Core.loadJSONEvaluableValue = function(value, thisObj) {
     } else {
         return value;
     }
+}
+
+Kien.LMBS_Core.executeWithEnvironment = function(expression, thisObj) {
+    return (function() {return eval(expression);}).call(thisObj);
+}
+
+Kien.LMBS_Core.fieldToScreenX = function(x) {
+    return x;
+}
+
+Kien.LMBS_Core.fieldToScreenY = function(y) {
+    return Kien.LMBS_Core.battleY - y;
 }
