@@ -64,12 +64,14 @@ Sprite_ProjectileLMBS.prototype.initialize = function(object, sprite){
 }
 
 Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
+    var thisObject = this._battler.getEvaluateObjects();
     this._xspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.xspeed,this) || 3;
     this._yspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.yspeed,this) || 0;
     this._damagePer = Kien.LMBS_Core.loadJSONEvaluableValue(param.damagePercent,this) || 1;
     this._bitmapName = param.filename || "";
     this._knockbackx = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackx,this) || 5;
     this._knockbacky = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbacky,this) || 5;
+    this._knocklength = Kien.LMBS_Core.loadJSONEvaluableValue(param.knocklength,this) || 5;
     this._knockbackdir = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackdir,this) || 0;
     this._pierce = Kien.LMBS_Core.loadJSONEvaluableValue(param.pierce,this) || 1;
     this._dangle = param.angleFollowDirection || false;
@@ -80,7 +82,7 @@ Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
     this._animationCount = 0;
     this.updateBitmap();
     this.x = this._userSprite._battler.screenX() + (param.dx ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dx,this) : 0);
-    this.y = this._userSprite._battler.screenY() + (param.dy ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dy,this) : 0);
+    this.y = this._userSprite._battler.screenY() - (param.dy ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dy,this) : 0);
     this._action._damagePercentage = this._damagePer;
     this.visible = true;
     this._isLoaded = true;
@@ -90,7 +92,7 @@ Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
 }
 
 Sprite_ProjectileLMBS.prototype.updateBitmap = function() {
-    if(!this.bimtap){
+    if(!this.bimtap && this._bitmapName){
         this.bitmap = ImageManager.loadProjectile(this._bitmapName);
         this.obtainImageProperty();
     }
@@ -100,10 +102,10 @@ Sprite_ProjectileLMBS.prototype.obtainImageProperty = function() {
     var arr = this._bitmapName.match(/(.+?)(?:\[(.*)\])?$/)
     if (arr[2]) {
         var params = arr[2];
-        if (params.match(/F(\d+)/)) {
+        if (params.match(/F(\d+)/i)) {
             this._frameNumber = parseInt(RegExp.$1,10);
         }
-        if (params.match(/S(\d+)/)) {
+        if (params.match(/S(\d+)/i)) {
             this._animationSpeed = parseInt(RegExp.$1,10);
         }
     }
@@ -156,7 +158,7 @@ Sprite_ProjectileLMBS.prototype.updateDamage = function() {
                 this._action.apply(enemy._battler);
                 var dir = this._knockbackdir ? ( 5 - this._direction ) : ( 5 + this._direction );
                 if (this._action.isDamage() || this._action.isDrain()){
-                    enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},dir);
+                    enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},dir, this._knocklength);
                     enemy._battler.onHitted(this._battler);
                     this._battler.onHit(enemy._battler);
                 }
