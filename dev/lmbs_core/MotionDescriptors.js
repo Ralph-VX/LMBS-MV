@@ -7,8 +7,8 @@ function AbstractMotionDescriptor() {
     this.initialize.apply(this, arguments);
 }
 
-AbstractMotionDescriptor.prototype.initialize = function(battler, item) {
-    this._battler = battler;
+AbstractMotionDescriptor.prototype.initialize = function(target, item) {
+    this._target = target;
     this._finish = false;
     this._waitCount = 0;
     this._item = item;
@@ -31,42 +31,13 @@ AbstractMotionDescriptor.prototype.isFinish = function() {
 }
 
 AbstractMotionDescriptor.prototype.release = function() {
-    this._battler = null;
+    this._target = null;
 }
 
-// Defined as a "Default" condition, override this function if needed.
-AbstractMotionDescriptor.prototype.canUse = function(battler, obj) {
-    var bool = false
-    if(DataManager.isSkill(obj)){
-        bool = battler.meetsSkillConditions(obj);
-    } else if (DataManager.isItem(obj)){
-        bool = battler.meetsItemConditions(obj);
-    }
-    if(!bool){
-        return bool;
-    }
-    bool = (!battler.isMotion() || battler._waitInput);
-    if(!bool){
-        return bool;
-    }
-    bool = !battler.isKnockback() && !battler.isGuard();
-    if (!bool) {
-        return bool;
-    }
-    if(battler._actions[0] && battler.isMotion()){
-        var now = battler._actions[0].item();
-        var pri1 = Kien.LMBS_Core.getSkillPriority(now);
-        var pri2 = Kien.LMBS_Core.getSkillPriority(obj);
-        bool = (pri1 != -1 ) && ((pri1 == 0 && pri2 == 0) || (pri2 > pri1) || (pri2 < 0));
-    }
-    if (!bool){
-        return bool;
-    }
-    if (!battler.isGround()) {
-        bool = obj.meta["Aerial Cast"] ? true : false ;
-    }
-    return bool;
-}
+//-----------------------------------------------------------------------------
+// BasicMotionDescriptor
+//
+// Motion descriptor contains only basic movements.
 
 //-----------------------------------------------------------------------------
 // DefaultMotionDescriptor
@@ -82,9 +53,11 @@ DefaultMotionDescriptor.prototype.constructor = DefaultMotionDescriptor;
 
 DefaultMotionDescriptor.prototype.initialize = function (battler, item) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
+    this._battler = this._target;
     this._stoppedAi = false;
     this._childDescriptor = null;
     this._showingMessage = [];
+    this._skillVariables = {};
     var item = this._item;
     if (!this._battler.isGround()) {
         var id = parseInt(item.meta["Aerial Cast"],10);
@@ -94,6 +67,7 @@ DefaultMotionDescriptor.prototype.initialize = function (battler, item) {
         }
     }
     this._processingMotionList = [];
+    this._motionIndex = 0;
     this._motionList = Kien.LMBS_Core.createMotionListFromNote(item);
     if (!this._skillToBeCast) {
         if (DataManager.isSkill(item)) {
@@ -122,16 +96,30 @@ DefaultMotionDescriptor.prototype.update = function(){
             return;
         }
     }
-    if (this._motionList.length > 0 && (!this.motionWaiting())){
-        var obj = this._motionList.shift();
+    if (this._motionList.length > this._motionIndex && (!this.motionWaiting())){
+        var obj = Object.create(this._motionList[this._motionIndex]);
         while(obj){
-            obj = (this.processMotion(obj) ? undefined : this._motionList.shift());
+            if (this.processMotion(obj)) {
+                this._motionIndex++;
+                obj = undefined;
+            } else {
+                if (this._motionList[++this._motionIndex]) {
+                    obj = Object.create(this._motionList[this._motionIndex]);
+                } else {
+                    obj = undefined;
+                }
+            }
         }
     }
     this.updateProcessingMotion();
-    if(this._motionList.length === 0 && this._processingMotionList.length === 0){
+    if(!this.isProcessing()){
         this._finish = true;
     }
+}
+
+DefaultMotionDescriptor.prototype.isProcessing = function() {
+    return this._motionList.length > this._motionIndex || this._processingMotionList.length > 0 ||
+        this._childDescriptor;
 }
 
 DefaultMotionDescriptor.prototype.processMotionCommandpose = function(obj) {
@@ -208,6 +196,7 @@ DefaultMotionDescriptor.prototype.processMotionCommandapplydamage = function(obj
         this._battler._actions[0]._damagePercentage = obj.damage;
         this._battler._damageInfo.knockback = obj.knockback;
         this._battler._damageInfo.knockdir = obj.knockdir;
+        this._battler._damageInfo.knocklength = obj.knocklength;
         this._battler.forceDamage(this._battler._target);
         if (dmg){
             this._battler._actions[0]._damagePercentage = oldd;
@@ -276,27 +265,27 @@ DefaultMotionDescriptor.prototype.processMotionCommandstartallai = function(obj)
 
 DefaultMotionDescriptor.prototype.processMotionCommandif = function(obj) {
     // Something similar to default damage formula :p
-    var a = this._battler;
-    var b = a._target;
-    var v = $gameVariables._data;
-    if (eval(obj.expression)){
+    var thisObj = this._battler.getEvaluateObjects()
+    if (Kien.LMBS_Core.executeWithEnvironment(obj.expression, thisObj)){
         this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, obj.list);
         this._childDescriptor.parent = this;
+        return true;
+    } else {
+        var elseindex = obj.list.findIndex(function(command) {
+            return command.type === "else";
+        })
+        if (elseindex >= 0) {
+            var elselist = obj.list.filter(function(c,i) {
+                return i > elseindex;
+            })
+            this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, elselist);
+            this._childDescriptor.parent = this;
+            return true;
+        }
     }
 }
 
-DefaultMotionDescriptor.prototype.processMotionCommandif = function(obj) {
-    // Something similar to default damage formula :p
-    var a = this._battler;
-    var b = a._target;
-    var v = $gameVariables._data;
-    if (eval(obj.expression)){
-        this._childDescriptor = new ChildDefaultMotionDescriptor(this._battler, this._item, obj.list);
-        this._childDescriptor.parent = this;
-    }
-}
-
-DefaultMotionDescriptor.prototype.processMotionCommandendif = function(obj) {
+DefaultMotionDescriptor.prototype.processMotionCommandend = function(obj) {
 }
 
 DefaultMotionDescriptor.prototype.processMotionCommandchangeweapon = function(obj) {
@@ -348,6 +337,10 @@ DefaultMotionDescriptor.prototype.processMotionCommandhidemessage = function(obj
                 $gameTemp.removeBattleMessage(obj.channel);
             }
             delete this._showingMessage[obj.channel];
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandevaluate = function(obj) {
+    Kien.LMBS_Core.executeWithEnvironment(obj.expression, this._Battler.getEvaluateObjects());
 }
 
 // Process motion executing in list
@@ -465,6 +458,40 @@ DefaultMotionDescriptor.prototype.motionWaiting = function() {
     }) !== undefined);
 }
 
+// Defined as a "Default" condition, override this function if needed.
+DefaultMotionDescriptor.prototype.canUse = function(battler, obj) {
+    var bool = false
+    if(DataManager.isSkill(obj)){
+        bool = battler.meetsSkillConditions(obj);
+    } else if (DataManager.isItem(obj)){
+        bool = battler.meetsItemConditions(obj);
+    }
+    if(!bool){
+        return bool;
+    }
+    bool = (!battler.isMotion() || battler._waitInput);
+    if(!bool){
+        return bool;
+    }
+    bool = !battler.isKnockback() && !battler.isGuard();
+    if (!bool) {
+        return bool;
+    }
+    if(battler._actions[0] && battler.isMotion()){
+        var now = battler._actions[0].item();
+        var pri1 = Kien.LMBS_Core.getSkillPriority(now);
+        var pri2 = Kien.LMBS_Core.getSkillPriority(obj);
+        bool = (pri1 != -1 ) && ((pri1 == 0 && pri2 == 0) || (pri2 > pri1) || (pri2 < 0));
+    }
+    if (!bool){
+        return bool;
+    }
+    if (!battler.isGround()) {
+        bool = obj.meta["Aerial Cast"] ? true : false ;
+    }
+    return bool;
+}
+
 //-----------------------------------------------------------------------------
 // ChildDefaultMotionDescriptor
 //
@@ -477,16 +504,32 @@ function ChildDefaultMotionDescriptor() {
 ChildDefaultMotionDescriptor.prototype = Object.create(DefaultMotionDescriptor.prototype);
 ChildDefaultMotionDescriptor.prototype.constructor = ChildDefaultMotionDescriptor;
 
+Object.defineProperty(ChildDefaultMotionDescriptor.prototype, "_skillVariables" ,{
+    get: function() {
+        if (this.parent) { 
+            return this.parent._skillVariables;
+        } else {
+            return {};
+        }
+    }
+});
+
 ChildDefaultMotionDescriptor.prototype.initialize = function (battler, item, list) {
     AbstractMotionDescriptor.prototype.initialize.apply(this,arguments);
+    this._battler = battler;
     this._stoppedAi = false;
     this._processingMotionList = [];
     this._motionList = list;
     this._childDescriptor = null;
+    this._motionIndex = 0;
     this.parent = null;
 }
 
-DefaultMotionDescriptor.prototype.processMotionCommandendif = function(obj) {
+DefaultMotionDescriptor.prototype.processMotionCommandend = function(obj) {
+    this._finish = true;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandelse = function(obj) {
     this._finish = true;
 }
 
