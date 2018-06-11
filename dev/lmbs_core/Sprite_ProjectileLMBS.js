@@ -39,7 +39,7 @@ Sprite_ProjectileLMBS.prototype.initialize = function(object, sprite){
     this._userSprite = sprite;
     this._isLoaded = false;
     this.anchor.x = 0.5;
-    this.anchor.y = 1;
+    this.anchor.y = 0.5;
     this._battler = sprite._battler;
     this._direction = (this._battler._facing ? 1 : -1);
     this.scale.x = this._direction * (Kien.LMBS_Core.defaultFacing ? 1 : -1);
@@ -63,34 +63,82 @@ Sprite_ProjectileLMBS.prototype.initialize = function(object, sprite){
     xhr.send();
 }
 
+Sprite_ProjectileLMBS.prototype.getEvaluateObjects = function() {
+    return {"sprite" : this};
+}
+
+Sprite_ProjectileLMBS.prototype.evaluateJSONString = function(string) {
+    return Kien.LMBS_Core.loadJSONEvaluableValue(
+        string, 
+        this._battler.getEvaluateObjects(this.getEvaluateObjects())
+    );
+}
+
 Sprite_ProjectileLMBS.prototype.onJSONloaded = function(param) {
     var thisObject = this._battler.getEvaluateObjects();
-    this._xspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.xspeed,this) || 3;
-    this._yspeed = Kien.LMBS_Core.loadJSONEvaluableValue(param.yspeed,this) || 0;
-    this._damagePer = Kien.LMBS_Core.loadJSONEvaluableValue(param.damagePercent,this) || 1;
+    this._xspeed = this.evaluateJSONString(param.xspeed) || 3;
+    this._yspeed = this.evaluateJSONString(param.yspeed) || 0;
+    this._damagePer = this.evaluateJSONString(param.damagePercent) || 1;
     this._bitmapName = param.filename || "";
-    this._knockbackx = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackx,this) || 5;
-    this._knockbacky = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbacky,this) || 5;
-    this._knocklength = Kien.LMBS_Core.loadJSONEvaluableValue(param.knocklength,this) || 5;
-    this._knockbackdir = Kien.LMBS_Core.loadJSONEvaluableValue(param.knockbackdir,this) || 0;
-    this._pierce = Kien.LMBS_Core.loadJSONEvaluableValue(param.pierce,this) || 1;
+    this._knockbackx = this.evaluateJSONString(param.knockbackx) || 5;
+    this._knockbacky = this.evaluateJSONString(param.knockbacky) || 5;
+    this._knocklength = this.evaluateJSONString(param.knocklength) || 5;
+    this._knockbackdir = this.evaluateJSONString(param.knockbackdir) || 0;
+    this._pierce = this.evaluateJSONString(param.pierce) || 1;
     this._dangle = param.angleFollowDirection || false;
-    this._invincibleFrames = Kien.LMBS_Core.loadJSONEvaluableValue(param.invincibleFrames,this) || 1;
+    this._invincibleFrames = this.evaluateJSONString(param.invincibleFrames) || 1;
+    this._delay = this.evaluateJSONString(param.delay) || 0;
     this._frameNumber = 1;
     this._animationSpeed = 4;
     this._finish = false;
     this._animationCount = 0;
     this.updateBitmap();
-    this.x = this._userSprite._battler.screenX() + (param.dx ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dx,this) : 0);
-    this.y = this._userSprite._battler.screenY() - (param.dy ? Kien.LMBS_Core.loadJSONEvaluableValue(param.dy,this) : 0);
+    this._xOrigin = param.dx.origin || "target";
+    this._yOrigin = param.dy.origin || "target";
+    this._dx = this.evaluateJSONString(param.dx.value) || 0;
+    this._dy = this.evaluateJSONString(param.dy.value) || 0;
+    this.x = this.projectileX();
+    this.y = this.projectileY();
+    this._entered = !this.outOfBound();
+    this._count = 0;
     this._action._damagePercentage = this._damagePer;
     this.visible = true;
     this._isLoaded = true;
     if (this._dangle) {
-        this.rotation = (new Kien.Vector2D(this._xspeed,-this._yspeed)).angleWithHorizon();
+        this.rotation = (new Kien.Vector2D(this._xspeed * this._direction,-this._yspeed)).angleWithHorizon();
+        this.scale.x = (Kien.LMBS_Core.defaultFacing ? 1 : -1);
     }
 }
 
+Sprite_ProjectileLMBS.prototype.projectileX = function() {
+    switch (this._xOrigin) {
+        case "target":
+            return (this._targetSprite.x + this._targetSprite._battler.getRelativeX(this._dx));
+        case "user":
+            return (this._userSprite.x + this._userSprite._battler.getRelativeX(this._dx));
+        case "screen":
+            return (this._dx);
+        case "field":
+            return (Kien.LMBS_Core.fieldToScreenX(this._dy));
+    }
+    return 0;
+}
+
+Sprite_ProjectileLMBS.prototype.projectileY = function() {
+    switch (this._yOrigin) {
+        case "target":
+            return (this._targetSprite._battler.screenY() - this._dy) - 
+                this._targetSprite.height / 2 * this._targetSprite.scale.y;
+        case "user":
+            return (this._userSprite._battler.screenY() - this._dy) - 
+                this._userSprite.height / 2 * this._userSprite.scale.y;
+        case "screen":
+            return (this._dy);
+        case "field":
+            return (Kien.LMBS_Core.fieldToScreenY(this._dy));
+    }
+    return 0;
+}
 Sprite_ProjectileLMBS.prototype.updateBitmap = function() {
     if(!this.bimtap && this._bitmapName){
         this.bitmap = ImageManager.loadProjectile(this._bitmapName);
@@ -117,6 +165,10 @@ Sprite_ProjectileLMBS.prototype.removeLMBS = function() {
 
 Sprite_ProjectileLMBS.prototype.update = function() {
     if (!this._finish && this._isLoaded){
+        if (this._delay > 0) {
+            this._delay--;
+            return;
+        }
         this.updatePosition();
         this.updateAnimation();
         this.updateDamage();
@@ -127,10 +179,12 @@ Sprite_ProjectileLMBS.prototype.update = function() {
 Sprite_ProjectileLMBS.prototype.updatePosition = function() {
     if (this._direction != 0){
         this.x += this._xspeed * this._direction;
-        this.y -= this._yspeed; 
-        if(this.outOfBound()){
+        this.y -= this._yspeed;
+        if (this._entered && this.outOfBound()){
             this.visible = false;
             this._finish = true;
+        } else if (!this._entered) {
+            this._entered = !this.outOfBound();
         }
     }
 }
@@ -160,7 +214,7 @@ Sprite_ProjectileLMBS.prototype.updateDamage = function() {
                 if (this._action.isDamage() || this._action.isDrain()){
                     enemy._battler.knockback({"x": this._knockbackx, "y": this._knockbacky},dir, this._knocklength);
                     enemy._battler.onHitted(this._battler);
-                    this._battler.onHit(enemy._battler);
+                    this._battler.onHit(enemy._battler, this._action);
                 }
                 enemy._battler.startDamagePopup();
                 if (this._pierce > 0) {
@@ -190,7 +244,7 @@ Sprite_ProjectileLMBS.prototype.updateTestData = function() {
 }
 
 Sprite_ProjectileLMBS.prototype.boundRect = function() {
-    return new Rectangle(this.x-this.width/2,this.y-this.height,this.width,this.height);
+    return new Rectangle(this.x-this.width/2,this.y-this.height/2,this.width,this.height);
 }
 
 Sprite_ProjectileLMBS.prototype.outOfBound = function() {

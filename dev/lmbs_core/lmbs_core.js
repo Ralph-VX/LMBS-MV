@@ -6,6 +6,7 @@
 Kien.LMBS_Core.parameters = PluginManager.parameters("LinearMotionBattleSystem_Core");
 Kien.LMBS_Core.battleWidth = parseInt(Kien.LMBS_Core.parameters["Battle Field Width"],10);
 Kien.LMBS_Core.battleY = parseInt(Kien.LMBS_Core.parameters["Battle Field Ground Y"],10);
+Kien.LMBS_Core.battleFieldY = parseInt(Kien.LMBS_Core.parameters["Battle Field BattleBack Y"],10);
 Kien.LMBS_Core.fallMaxSpeed = parseInt(Kien.LMBS_Core.parameters["Maximum Fall Speed"],10);
 Kien.LMBS_Core.animationSpeed = parseInt(Kien.LMBS_Core.parameters["Animation Speed"],10);
 Kien.LMBS_Core.debugMode = eval(Kien.LMBS_Core.parameters["Debug Mode"]);
@@ -29,7 +30,7 @@ Kien.LMBS_Core.inputKeepTime = parseInt(Kien.LMBS_Core.parameters["Input Keep Ti
 Kien.LMBS_Core.cursorAnimationSpeed = parseInt(Kien.LMBS_Core.parameters["Cursor Animation Speed"]);
 Kien.LMBS_Core.cursorFrameCount = parseInt(Kien.LMBS_Core.parameters["Cursor Frame Count"]);
 Kien.LMBS_Core.defaultHitstopLength = parseInt(Kien.LMBS_Core.parameters["Default Hitstop Length"])
-Kien.LMBS_Core.gaurdKey = parseInt(Kien.LMBS_Core.parameters["Guard Key"]);
+Kien.LMBS_Core.guardKey = parseInt(Kien.LMBS_Core.parameters["Guard Key"]);
 Kien.LMBS_Core.previousTargetKey = parseInt(Kien.LMBS_Core.parameters["Previous Target Key"]);
 Kien.LMBS_Core.nextTargetKey = parseInt(Kien.LMBS_Core.parameters["Next Target Key"]);
 Kien.LMBS_Core.autoGuardDuration = parseInt(Kien.LMBS_Core.parameters["Auto Guard Time After Guard"]);
@@ -419,7 +420,7 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "damage": parseFloat(RegExp.$5),
             "knockback": {"x": parseFloat(RegExp.$6,10),"y": parseFloat(RegExp.$7,10)},
             "knockdir": parseInt(RegExp.$8,10),
-            "knocklength": parseInt(RegExp.$8,10)
+            "knocklength": parseInt(RegExp.$9,10)
         });
     }
     if(line.match(/EndDamage/)) {
@@ -516,7 +517,7 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "dx" : parseInt(RegExp.$1),
             "dy" : parseInt(RegExp.$2),
             "dur": parseInt(RegExp.$3)
-        })
+        });
     }
     if (line.match(/RotateWeapon (\d+),(\d+),(\d+)(?:\,(\d+))?/)) {
         list.push({
@@ -525,35 +526,67 @@ Kien.LMBS_Core.loadMotionLine = function(line,cur) {
             "dir" : parseInt(RegExp.$2,10),
             "dur" : parseInt(RegExp.$3,10),
             "rounds" : !!RegExp.$4 ? parseInt(RegExp.$4,10) : 0
-        })
+        });
     }
     if (line.match(/ResetWeapon/)) {
         list.push({
             "type" : "resetweapon"
-        })
+        });
     }
     if (line.match(/ShowSkillName/)) {
         list.push({
             "type" : "showskillname"
-        })
+        });
     }
     if (line.match(/ShowMessage (\d+)\,(.+)/)) {
         list.push({
             "type" : "showmessage",
             "channel" : parseInt(RegExp.$1, 10),
             "string" : RegExp.$2
-        })
+        });
     }
     if (line.match(/HideMessage (\d+)/)) {
         list.push({
             "type" : "hidemessage",
             "channel" : parseInt(RegExp.$1, 10)
-        })
+        });
     }
     if (line.match(/Else$/)) {
         list.push({
             "type" : "else"
-        })
+        });
+    }
+    if (line.match(/Eval (.+)$/)) {
+        list.push({
+            "type" : "evaluate",
+            "expression" : RegExp.$1
+        });
+    }
+    if (line.match(/PlaySe (.+)\,(\d+)\,(\d+)\,(\d+)$/)) {
+        list.push({
+            "type" : "playse",
+            "name" : RegExp.$1,
+            "volume" : parseInt(RegExp.$1, 10),
+            "pitch" : parseInt(RegExp.$1, 10),
+            "pan" : parseInt(RegExp.$1, 10)
+        });
+    }
+    if (line.match(/SetDirection (\d+)/)) {
+        list.push({
+            "type" : "setdirection",
+            "dir" : parseInt(RegExp.$1, 10)
+        });
+    }
+    if (line.match(/InvertDirection/)) {
+        list.push({
+            "type" : "invertdirection"
+        });
+    }
+    if (line.match(/SetTransparent (true|false)/)) {
+        list.push({
+            "type" : "settransparent",
+            "value" : eval(RegExp.$1)
+        });
     }
     Kien.LMBS_Core.loadExtraLine(line,cur);
 }

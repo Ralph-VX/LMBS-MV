@@ -45,6 +45,7 @@ Sprite_BattleRewardLMBS.prototype.updateMain = function() {
     if (this._count == 0) {
         this.createExpPart();
     } else if (this._count == 30) {
+        BattleManager.gainRewards();
         this.createGoldPart();
     } else if (this._count == 60) {
         this.createItemPart();

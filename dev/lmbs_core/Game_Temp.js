@@ -5,7 +5,7 @@
 
 Kien.LMBS_Core.Game_Temp_initialize = Game_Temp.prototype.initialize;
 Game_Temp.prototype.initialize = function() {
-    Kien.LMBS_Core.Game_Temp_initialize.call(this);
+    Kien.LMBS_Core.Game_Temp_initialize.apply(this, arguments);
     this._inBattleTopMessage = [];
 };
 

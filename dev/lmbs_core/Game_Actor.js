@@ -5,11 +5,15 @@
 
 Kien.LMBS_Core.Game_Actor_initMembers = Game_Actor.prototype.initMembers;
 Game_Actor.prototype.initMembers = function() {
-    Kien.LMBS_Core.Game_Actor_initMembers.call(this);
+    Kien.LMBS_Core.Game_Actor_initMembers.apply(this, arguments);
     this._availableAttacks = [];
     this._attackSets = {}; // Preloaded Attack Motion Sets. ["dir"] shows different direction.
     this._skillSets = {}; // Skills can performed with skill button. ["dir"] shows different direction.
     this._inputData = {};
+    this.resetInputData();
+}
+
+Game_Actor.prototype.resetInputData = function() {
     this._inputData.lastDir = 0;
     this._inputData.lastDirPast = 0;
     this._inputData.reservedInput = null;
@@ -20,7 +24,7 @@ Game_Actor.prototype.initMembers = function() {
 
 Kien.LMBS_Core.Game_Actor_setup = Game_Actor.prototype.setup;
 Game_Actor.prototype.setup = function(actorId) {
-    Kien.LMBS_Core.Game_Actor_setup.call(this, actorId);
+    Kien.LMBS_Core.Game_Actor_setup.apply(this, arguments);
     this.loadBaseAiClass();
     this.loadVictorySkill();
     this.loadMoveSpeed();
@@ -62,7 +66,6 @@ Game_Actor.prototype.loadMoveSpeed = function() {
 }
 
 Game_Actor.prototype.clearAiData = function() {
-    this._pauseAi = false;
     this._aiTree = [];
     this._aiData.readySkill = null; // Skill that character Ai is trying to use.
     this._aiData.forceAi = false; // Force to move by AI even the player is controlling it
@@ -73,7 +76,14 @@ Game_Actor.prototype.clearAiData = function() {
 }
 
 Game_Actor.prototype.resetAi = function() {
-    this.clearAiData();
+    this._pauseAi = false;
+    this._aiTree = [];
+    this._aiData.readySkill = null; // Skill that character Ai is trying to use.
+    this._aiData.forceAi = false; // Force to move by AI even the player is controlling it
+    if ($gameParty.inBattle()) {
+        var ai = eval(this._aiData.classname);
+        this.pushAi(ai);
+    }
 }
 
 Game_Actor.prototype.pushAi = function(aiClass, obj) {
@@ -86,13 +96,13 @@ Game_Actor.prototype.pushAi = function(aiClass, obj) {
     this._aiTree.push(ai);
 }
 
-Kien.LMBS_Core.Game_Actor_shouldDisplayLevelUp = Game_Actor.prototype.shouldDisplayLevelUp;
-Game_Actor.prototype.shouldDisplayLevelUp = function() {
-    if ($gameParty.inBattle()){
-        return false;
+Game_Actor.prototype.displayLevelUp = function(newSkills) {
+    this.addPopup("Level UP!", 135);
+    if (newSkills.length > 0) {
+        this.addPopup("New Skills!", 135, 90);
     }
-    return Kien.LMBS_Core.Game_Actor_shouldDisplayLevelUp.call(this);
 };
+
 
 Game_Actor.prototype.pushAiWaitIdle = function() {
     this.pushAi(Game_LMBSAiWaitIdle);
@@ -148,7 +158,7 @@ Game_Actor.prototype.lowestSkillPriority = function() {
 
 Kien.LMBS_Core.Game_Actor_initImage = Game_Actor.prototype.initImages;
 Game_Actor.prototype.initImages = function() {
-	Kien.LMBS_Core.Game_Actor_initImage.call(this);
+	Kien.LMBS_Core.Game_Actor_initImage.apply(this, arguments);
 	var actor = this.actor();
 	if(actor.meta["Battler Name"]){
 		this._battlerName = actor.meta["Battler Name"];
@@ -159,6 +169,7 @@ Game_Actor.prototype.onBattleStart = function() {
     Game_Battler.prototype.onBattleStart.call(this);
     this.resetAi();
     this.initAttackSkills();
+    this.resetInputData();
 };
 
 Game_Actor.prototype.onBattleEnd = function() {
@@ -192,7 +203,6 @@ Game_Actor.prototype.update = function() {
                         this._inputData.lastDirPast = 0;
                     }
                 }
-                this.updateInputJump();
                 this.updateInputMovement();
             }
         } else if (((this.isAiActing() && !this.isPlayerActor()) || this.isAiForcing())) {
@@ -302,47 +312,56 @@ Game_Actor.prototype.updateInputTarget = function() {
             } while (!(this.isTargetAvailable(this._target) || this._target === temp))
         }
         this._inputData.utilInput = null;
+    } else if (!this._target || this._target.isDead()) {
+        this.chooseTarget();
     }
 }
 
 Game_Actor.prototype.updateInputMovement = function() {
     if(this.isActable()){
         if (this._inputData.movementReservedInput == "move") {
-            if (this._inputData.movementReservedInputDir == 4){
-                this.moveLeft();
-            } else if (this._inputData.movementReservedInputDir == 6){
-                this.moveRight();
-            }  else {
-                this._dash = false;
+            this._inputData.jumpInputDur++;
+            if (this._inputData.jumpInputDur >= Kien.LMBS_Core.inputDelay){
+                if (this._inputData.movementReservedInputDir == 4){
+                    this.moveLeft();
+                } else if (this._inputData.movementReservedInputDir == 6){
+                    this.moveRight();
+                }
             }
             this._inputData.movementReservedInput = null;
             this._inputData.movementReservedInputDir = 0;
+        } else if (this._inputData.movementReservedInput == "jump"){
+            this._inputData.jumpInputDur++;
+            if (this._inputData.jumpInputDur == Kien.LMBS_Core.inputDelay){
+                var dir = this._inputData.movementReservedInputDir;
+                this.jump(dir);
+                this._inputData.jumpInputDur = 0;
+            }
+            this._inputData.movementReservedInput = null;
         } else {
+            this._inputData.jumpInputDur = 0;
             this._dash = false;
         }
     }
 }
 
 Game_Actor.prototype.moveLeft = function() {
+    var lt = this._moveTarget;
     this.moveWith(-(this.moveSpeed()));
+    if (lt == this._moveTarget) {
+        BattleManager._escaping = true;
+    }
 }
 
 Game_Actor.prototype.moveRight = function() {
+    var lt = this._moveTarget;
     this.moveWith(this.moveSpeed());
+    if (lt == this._moveTarget) {
+        BattleManager._escaping = true;
+    }
 }
 
 Game_Actor.prototype.updateInputJump = function() {
-    if (this._inputData.movementReservedInput == "jump" && this.isActable()){
-        this._inputData.jumpInputDur++;
-        if (this._inputData.jumpInputDur == Kien.LMBS_Core.inputDelay){
-            var dir = this._inputData.movementReservedInputDir;
-            this.jump(dir);
-            this._inputData.jumpInputDur = 0;
-        }
-        this._inputData.movementReservedInput = null;
-    } else {
-        this._inputData.jumpInputDur = 0;
-    }
 }
 
 Game_Actor.prototype.updateInputDash = function() {
@@ -551,7 +570,11 @@ Game_Actor.prototype.chooseLowestHpTarget = function() {
 }
 
 Game_Actor.prototype.initBattlePosition = function() {
-    this._battleX = $gameParty.battlerPosition(this);
+    if (this.actor().meta["BattlePosition"]) {
+        this._battleX = parseInt(this.actor().meta["BattlePosition"]);
+    } else {
+        this._battleX = $gameParty.battlerPosition(this);
+    }
     this._moveTarget = this._battleX;
     this._target = $gameTroop.members()[0];
     this._battleY = 0;

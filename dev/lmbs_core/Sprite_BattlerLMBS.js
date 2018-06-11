@@ -412,11 +412,14 @@ Sprite_BattlerLMBS.prototype.updateWeaponSprite = function() {
 }
 
 Sprite_BattlerLMBS.prototype.setupDamagePopup = function() {
-    if (this._battler.isDamagePopupRequested()) {
+    var obj;
+    while (obj = this._battler.obtainDamagePopup()) {
         var sprite = new Sprite_Damage();
-        sprite.x = this.x + this.damageOffsetX();
-        sprite.y = this.y + this.damageOffsetY();
-        sprite.setup(this._battler);
+        sprite.setup(obj);
+        var w = sprite.spriteWidth();
+        var h = sprite.spriteHeight();
+        sprite.x = this.x + this.damageOffsetX() + (Math.randomInt(w) - w/2);
+        sprite.y = this.y + this.damageOffsetY() + (Math.randomInt(h) - h/2);
         var updateFunc = sprite.update;
         var newUpdateFunc = function() {
             if (!SceneManager._scene.isBattlePaused()){
@@ -430,6 +433,23 @@ Sprite_BattlerLMBS.prototype.setupDamagePopup = function() {
         this.parent.addChild(sprite);
         this._battler.clearDamagePopup();
         this._battler.clearResult();
+    }
+    while (obj = this._battler.obtainPopup()) {
+        var sprite = new Sprite_Damage();
+        sprite.setup(obj.string, obj.duration, obj.delay);
+        var w = sprite.spriteWidth();
+        var h = sprite.spriteHeight();
+        sprite.x = this.x + this.damageOffsetX() + (Math.randomInt(w) - w/2);
+        sprite.y = this.y + this.damageOffsetY() + (Math.randomInt(h) - h/2);
+        var updateFunc = sprite.update;
+        var newUpdateFunc = function() {
+            if (!SceneManager._scene.isBattlePaused()){
+                updateFunc.call(this);
+            }
+        }
+        sprite.update = newUpdateFunc;
+        this._damages.push(sprite);
+        this.parent.addChild(sprite);
     }
 };
 
@@ -448,7 +468,7 @@ Sprite_BattlerLMBS.prototype.oppositeMembers = function() {
 
 Sprite_BattlerLMBS.prototype.targetSprite = function() {
     if(!this._battler._target){
-        return null;
+        return new Sprite();
     }
     return this.parent.findSprite(this._battler._target);
 }

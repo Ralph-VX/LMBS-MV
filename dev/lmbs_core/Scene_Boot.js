@@ -6,16 +6,16 @@
 Kien.LMBS_Core.Scene_Boot_create = Scene_Boot.prototype.create;
 Scene_Boot.prototype.create = function() {
 	this.tryCreateCharacterList();
-	Kien.LMBS_Core.Scene_Boot_create.call(this);
+	Kien.LMBS_Core.Scene_Boot_create.apply(this, arguments);
 };
 
 Scene_Boot.prototype.tryCreateCharacterList = function() {
 	if (Utils.isNwjs() && Utils.isOptionValid('test')) {
+		var path = require('path');
 		var obj = {};
 		var fs = require("fs");
-		var loc = window.location.pathname;
-		var projdir = loc.substring(1, loc.lastIndexOf('/'));
-		var basedir = projdir + "/img/sv_actors";
+		var pdir = path.dirname(document.location.pathname.slice(1));
+		var basedir = pdir + "/img/sv_actors/";
 		var dirs = fs.readdirSync(basedir).filter(function(name) {
 			return fs.lstatSync(basedir+"/"+name).isDirectory();
 		});
@@ -35,6 +35,6 @@ Scene_Boot.prototype.tryCreateCharacterList = function() {
 			}
 		})
 		console.log(JSON.stringify(obj));
-		fs.writeFileSync(projdir + "/data/characterList.json",JSON.stringify(obj));
+		fs.writeFileSync(pdir+"/data/characterList.json",JSON.stringify(obj));
 	}
 }

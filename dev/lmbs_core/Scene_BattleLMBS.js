@@ -27,6 +27,7 @@ Scene_BattleLMBS.prototype.create = function() {
     };
     this._battleEnd = false;
     this.createHitCountSprite();
+    this.createEscapeSprite();
     this.createWindowLayer();
     this.createAllWindows();
     this.createRewardSprite();
@@ -156,6 +157,12 @@ Scene_BattleLMBS.prototype.createHitCountSprite = function() {
     this.addChild(this._hitCountSprite);
 }
 
+Scene_BattleLMBS.prototype.createEscapeSprite = function() {
+    this._escapeSprite = new Sprite_EscapeGauge();
+    this._escapeSprite.y = 12;
+    this.addChild(this._escapeSprite);
+}
+
 Scene_BattleLMBS.prototype.start = function() {
     Scene_Base.prototype.start.call(this);
     this.startFadeIn(this.fadeSpeed(), false);
@@ -177,11 +184,11 @@ Scene_BattleLMBS.prototype.update = function() {
     if(this._battleEnd){
         this.updateBattleEnd();
     } else {
-        if(BattleManager.updateEvent()){
-            BattleManager._isEventRunning = true;
+        if (BattleManager.updateEvent()){
             if (BattleManager.isBattleEnd()) {
                 this.startBattleEnd();
             }
+            BattleManager._isEventRunning = true;
         } else {
             BattleManager._isEventRunning = false;
         }
@@ -191,14 +198,16 @@ Scene_BattleLMBS.prototype.update = function() {
     this.updateInput();
     this.updateMain();
     this.updateCamera();
-    this.updateInput();
 }
 
 Scene_BattleLMBS.prototype.updateCamera = function() {
     if (this._battleEnd){
         $gameScreen._screenMembers = [];
     } else {
-        $gameScreen._screenMembers = [this.activeActor(), this.activeActor()._target];
+        $gameScreen._screenMembers = [this.activeActor()];
+        if (this.activeActor()._target) {
+            $gameScreen._screenMembers.push(this.activeActor()._target);
+        }
         if (this.activeActor()._originalTarget) {
             $gameScreen._screenMembers.push(this.activeActor()._originalTarget);
         }
@@ -220,8 +229,22 @@ Scene_BattleLMBS.prototype.updateCamera = function() {
 
 Scene_BattleLMBS.prototype.updateMain = function() {
     if (!this.isBattlePaused()){
+        BattleManager._escaping = false;
         $gameParty.update();
         $gameTroop.update();
+        if (!BattleManager._escaping && !BattleManager._escaped) {
+            BattleManager._escapeCount = Math.max(BattleManager._escapeCount - 1, 0);
+        } else {
+            BattleManager._escapeCount += BattleManager._escapeRatio
+            console.log(BattleManager._escapeCount);
+            if (BattleManager.canEscape()) {
+                if (BattleManager.escapeRate() >= 1) {
+                    BattleManager._escaped = true;
+                }
+            } else {
+                BattleManager._escapeCount = 60;
+            }
+        }
     }
     $gameScreen.update();
 }
@@ -256,9 +279,11 @@ Scene_BattleLMBS.prototype.updateInput = function() {
 }
 
 Scene_BattleLMBS.prototype.updateInputMenu = function() {
-    if (Input.isTriggered('shift')){
-        this._menuWindow.open();
-        this._menuWindow.activate();
+    if (!BattleManager.isBattleEnd()) {
+        if (Input.isTriggered('shift')){
+            this._menuWindow.open();
+            this._menuWindow.activate();
+        }
     }
 }
 
@@ -286,14 +311,13 @@ Scene_BattleLMBS.prototype.startBattleEnd = function() {
     $gameTroop.aliveMembers().forEach(function(actor){
         actor.endMotion();
     })
-    if(!$gameParty.isAllDead()){
+    if(!$gameParty.isAllDead() && !BattleManager._escaping){
         // Victory!
         $gameParty.aliveMembers().forEach(function(actor){
             //actor._target = actor;
             actor.performVictorySkill();
         });
         this._rewardSprite.start();
-        BattleManager.gainRewards();
     }
 }
 
@@ -325,6 +349,8 @@ Scene_BattleLMBS.prototype.updateBattleEnd = function() {
     } else if (this._rewardSprite.isFinish() && $gameParty.aliveMembers().filter(function(actor){
         actor.isMotion();
     }).length == 0 ){
+        BattleManager.updateBattleEnd()
+    } else if (BattleManager.isEscaped()) {
         BattleManager.updateBattleEnd()
     }
 }

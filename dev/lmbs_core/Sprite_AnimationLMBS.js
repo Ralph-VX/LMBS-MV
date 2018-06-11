@@ -43,30 +43,45 @@ Sprite_AnimationLMBS.prototype.initialize = function(object, sprite){
     xhr.send();
 }
 
+Sprite_AnimationLMBS.prototype.getEvaluateObjects = function() {
+    return {"sprite" : this};
+}
+
+Sprite_AnimationLMBS.prototype.evaluateJSONString = function(string) {
+    return Kien.LMBS_Core.loadJSONEvaluableValue(
+        string, 
+        this._battler.getEvaluateObjects(this.getEvaluateObjects())
+    );
+}
+
 Sprite_AnimationLMBS.prototype.onJSONloaded = function(param) {
     var thisObject = this._battler.getEvaluateObjects();
     this._timingArray = param.timing || {};
     this._xOrigin = param.x.origin || "target";
     this._yOrigin = param.y.origin || "target";
-    this._dx = Kien.LMBS_Core.loadJSONEvaluableValue(param.x.value,this) || 0;
-    this._dy = Kien.LMBS_Core.loadJSONEvaluableValue(param.y.value,this) || 0;
+    this._dx = this.evaluateJSONString(param.x.value) || 0;
+    this._dy = this.evaluateJSONString(param.y.value) || 0;
     this._animation = $dataAnimations[param.animationId] || null;
     this._delay = param.delay || 0;
-    this._mirror = param.mirror || false
+    this._mirror = param.mirror || false;
     this._follow = param.follow || false;
     this._animationPosition = {
         "x" : this.animationX(),
         "y" : this.animationY(),
-        "height" : this._targetSprite.height
+        "height" : this.animationHeight()
     }
-    if (this._mirror === null) {
-        this._mirror = !this._battler._facing;
+    if (this._battler._facing) {
+        this._mirror = !this._mirror;
     }
     if(this._targetSprite && this._animation){
         if (this._mirror){
            this.scale.x = -1;
         }
-        this.setup(this._targetSprite , this._animation, this._mirror, this._delay);
+        if (this._xOrigin == this._yOrigin && this._xOrigin == "user") {
+            this.setup(this._userSprite , this._animation, this._mirror, this._delay);
+        } else {
+            this.setup(this._targetSprite , this._animation, this._mirror, this._delay);
+        }
     } else {
         this._finish = true;
     }
@@ -103,13 +118,12 @@ Sprite_AnimationLMBS.prototype.initMembers = function() {
     this._processingTiming = [];
 }
 
-
 Sprite_AnimationLMBS.prototype.animationX = function() {
     switch (this._xOrigin) {
         case "target":
-            return (this._targetSprite._battler.screenX() + this._dx);
+            return (this._targetSprite.x + this._targetSprite._battler.getRelativeX(this._dx));
         case "user":
-            return (this._userSprite._battler.screenX() + this._dx);
+            return (this._userSprite.x + this._userSprite._battler.getRelativeX(this._dx));
         case "screen":
             return (this._dx);
         case "field":
@@ -130,6 +144,14 @@ Sprite_AnimationLMBS.prototype.animationY = function() {
             return (Kien.LMBS_Core.fieldToScreenY(this._dy));
     }
     return 0;
+}
+
+Sprite_AnimationLMBS.prototype.animationHeight = function() {
+    if (this._xOrigin == this._yOrigin && this._xOrigin == "target") {
+        return this._targetSprite.height;
+    } else {
+        return this._userSprite.height;
+    }
 }
 
 Sprite_AnimationLMBS.prototype.removeLMBS = function() {
@@ -167,21 +189,32 @@ Sprite_AnimationLMBS.prototype.updateTestData = function() {
 Sprite_AnimationLMBS.prototype.updateDamage = function() {
     var memb = this._userSprite.oppositeMembers();
     var func = function(enemy){
-        if(!enemy._battler.isDead() && enemy.battlerBox().overlap(rect) && obj.hitted.indexOf(enemy) == -1){
-            this._action.apply(enemy._battler);
-            var dir = obj.knockdir ? (this._battler._facing ? 4 : 6) : (this._battler._facing ? 6 : 4);
-            if (this._action.isDamage() || this._action.isDrain()){
-                enemy._battler.knockback(obj.knockback,dir, obj.knocklength);
-                enemy._battler.onHitted(this._battler);
-                this._battler.onHit(enemy._battler);
+        if(!enemy._battler.isDead() && enemy.battlerBox().overlap(rect)){
+            if (obj.hitted.findIndex(function(hit) {
+                return hit.battler == enemy;
+            }) < 0) {
+                this._action.apply(enemy._battler);
+                var dir = obj.knockdir ? (this._battler._facing ? 4 : 6) : (this._battler._facing ? 6 : 4);
+                if (this._action.isDamage() || this._action.isDrain()){
+                    enemy._battler.knockback(obj.knockback,dir, obj.knocklength);
+                    enemy._battler.onHitted(this._battler);
+                    this._battler.onHit(enemy._battler, this._action);
+                }
+                enemy._battler.startDamagePopup();
+                BattleManager.refreshStatus();
+                obj.hitted.push({"battler" : enemy, "count" :obj.interval});
             }
-            enemy._battler.startDamagePopup();
-            BattleManager.refreshStatus();
-            obj.hitted.push(enemy);
         }
     };
     for (var i = 0; i < this._processingTiming.length; i++) {
         var obj = this._processingTiming[i];
+        for (var i2 = 0; i2 < obj.hitted.length; i2++) {
+            var hit = obj.hitted[i2];
+            if (hit.count > 0) hit.count--;
+        }
+        obj.hitted = obj.hitted.filter(function(hit) {
+            return hit.count > 0;
+        })
         var rectsource = obj.rect;
         this._action._damagePercentage = obj.damagePer;
         var rect = new Rectangle(rectsource.x,rectsource.y,rectsource.width,rectsource.height);

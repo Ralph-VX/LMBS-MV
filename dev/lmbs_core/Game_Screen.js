@@ -6,7 +6,7 @@
 
 Kien.LMBS_Core.Game_Screen_clear = Game_Screen.prototype.clear;
 Game_Screen.prototype.clear = function() {
-    Kien.LMBS_Core.Game_Screen_clear.call(this);
+    Kien.LMBS_Core.Game_Screen_clear.apply(this, arguments);
     this.clearBattleCamera();
 };
 
@@ -26,7 +26,7 @@ Game_Screen.prototype.instantZoomLength = function() {
 
 Kien.LMBS_Core.Game_Screen_update = Game_Screen.prototype.update;
 Game_Screen.prototype.update = function() {
-    Kien.LMBS_Core.Game_Screen_update.call(this);
+    Kien.LMBS_Core.Game_Screen_update.apply(this, arguments);
     this.updateBattleCamera();
 };
 
@@ -50,7 +50,7 @@ Game_Screen.prototype.updateBattleCamera = function() {
 Game_Screen.prototype.zoomBattleCameraAt = function(targets) {
     if (targets.length > 0){
         var left = Math.min.apply(null,targets.map(function(obj){
-            return obj._battleX;
+            return obj ? obj._battleX : 0;
         })) - Kien.LMBS_Core.leftCameraMargin; 
         left = Math.max(0,left);
         var right = Math.max.apply(null,targets.map(function(obj){

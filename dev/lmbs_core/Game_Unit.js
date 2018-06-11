@@ -9,6 +9,18 @@ Game_Unit.prototype.update = function(){
     })
 }
 
+Game_Unit.prototype.stopAllAi = function() {
+	this.members().forEach(function(battler) {
+		battler._pauseAi = true;
+	});
+}
+
+Game_Unit.prototype.startAllAi = function() {
+	this.members().forEach(function(battler) {
+		battler._pauseAi = false;
+	})
+}
+
 Game_Unit.prototype.getStateAffectableMembers = function(effects) {
 	var scores = [];
 	var indices = [];

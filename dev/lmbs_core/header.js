@@ -39,6 +39,11 @@ Kien.LMBS_Core = {};
  * @default 500
  * @type number
  *
+ * @param Battle Field BattleBack Y
+ * @desc the Y coordinate of ground equals to what y coordinate of battleback. 
+ * @default 500
+ * @type number
+ *
  * @param Maximum Fall Speed
  * @desc the maximum distance characters falls each frame.
  * @default 10

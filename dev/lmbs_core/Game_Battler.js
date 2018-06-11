@@ -6,7 +6,7 @@
 
 Kien.LMBS_Core.Game_Battler_InitMembers = Game_Battler.prototype.initMembers;
 Game_Battler.prototype.initMembers = function(){
-	Kien.LMBS_Core.Game_Battler_InitMembers.call(this);
+	Kien.LMBS_Core.Game_Battler_InitMembers.apply(this, arguments);
 	this._battleX = 0;
 	this._battleY = 0; // 0: at ground. positive: at sky
 	this._floatY = 0; // The height those people floating should be
@@ -44,18 +44,42 @@ Game_Battler.prototype.initMembers = function(){
     this._forceWaitCount = 0; // count for hit-stop.
     this._hitStopLength = Kien.LMBS_Core.defaultHitstopLength; // Length of hit-stop.
     this._knockbacking = false; // Is knockback or not
+    this._defaultTransparent = false; // Maybe some enemy will be transparent by default.
+    this._transparent = this._defaultTransparent; // Do apply collision or not.
+    this.clearPopup();
     this.clearCurrentHitCount();
     this.clearChainCount();
 };
+
+Game_Battler.prototype.clearPopup = function() {
+    this._requiredPopup = [];
+    this._damagePopups = [];
+}
+
+Game_Battler.prototype.addPopup = function(string, duration, delay) {
+    this._requiredPopup.push({"string":string,"duration" : duration, "delay":delay});
+}
+
+Game_Battler.prototype.obtainPopup = function() {
+    return this._requiredPopup.shift();
+}
 
 Game_Battler.prototype.clearCurrentHitCount = function() {
     this._currentChainCount = 0;
     this._currentHitCount = 0;
 }
 
+Game_Battler.prototype.startDamagePopup = function() {
+    this._damagePopups.push(this.result().copy());
+};
+
+Game_Battler.prototype.obtainDamagePopup = function() {
+    return this._damagePopups.shift();
+}
+
 Kien.LMBS_Core.Game_Battler_xparam = Game_Battler.prototype.xparam;
 Game_Battler.prototype.xparam = function(xparamId) {
-    var val = Kien.LMBS_Core.Game_Battler_xparam.call(this, xparamId);
+    var val = Kien.LMBS_Core.Game_Battler_xparam.apply(this, arguments);
     if (xparamId == 1 && this.isKnockback()) {
         return val / 2;
     }
@@ -157,6 +181,18 @@ Game_Battler.prototype.isAttacking = function() {
     return this._attackRect;
 };
 
+Game_Battler.prototype.castTimeRate = function() {
+    var r = 1.0;
+    var objs = this.traitObjects();
+    for (var i = 0; i < objs.length; i++) {
+        var obj = objs[i];
+        if (obj.meta["CastTime"]) {
+            r = r * parseFloat(obj.meta["CastTime"]);
+        }
+    }
+    return r;
+}
+
 Game_Battler.prototype.isHit = function() {
     return this.isMotion() && this.isDamaging() && this._damageList.length > 0;
 }
@@ -170,16 +206,28 @@ Game_Battler.prototype.screenX = function(){
 };
 
 Game_Battler.prototype.isOpaque = function() {
-    return this._battleRect != null && !this.isDead();
+    return this._battleRect != null && !this.isDead() && !this._transparent;
 };
 
 Game_Battler.prototype.screenY = function(){
     return Kien.LMBS_Core.fieldToScreenY(this._battleY);
 };
 
+Game_Battler.prototype.cx = function() {
+    return this._battleX;
+}
+
+Game_Battler.prototype.cy = function() {
+    return this._battleY + this._battleRect.height/2;
+}
+
+Game_Battler.prototype.currentSkill = function() {
+    return this._actions[0].item();
+}
+
 Kien.LMBS_Core.Game_Battler_refresh = Game_Battler.prototype.refresh;
 Game_Battler.prototype.refresh = function() {
-    Kien.LMBS_Core.Game_Battler_refresh.call(this);
+    Kien.LMBS_Core.Game_Battler_refresh.apply(this, arguments);
     if (this.isDead() && $gameParty.inBattle()){
         this.endMotion();
         this.clearAiData();
@@ -257,7 +305,7 @@ Game_Battler.prototype.knockback = function(knockback, knockdir, knocklength){
         this.clearCurrentHitCount();
         this._knockback.x = knockback.x;
         this._knockback.y = knockback.y;
-        this._knockback.length = knocklength;
+        this._knockback.length = knocklength || 5;
         this._knockdir = knockdir;
         this._knockbacking = true;
         this._fallCount = 0;
@@ -288,12 +336,14 @@ Game_Battler.prototype.updateKnockback = function() {
                 this._knockback.y = 0;
             }
         }
-        if (this._knockback.length > 0) {
-            this._knockback.length -= 1;
-        }
-        if (this.isGround() && this._knockback.length <= 0) {
-            this._knockbacking = false;
-            this.clearChainCount();
+        if (this.isGround()) {
+            if (this._knockback.length > 0) {
+                this._knockback.length -= 1;
+                if ((!this._knockback.length || this._knockback.length  <= 0)) {
+                    this._knockbacking = false;
+                    this.clearChainCount();
+                }
+            }
         }
     }
 }
@@ -359,35 +409,36 @@ Game_Battler.prototype.checkCollide = function() {
     var newrect = this._battleRect.clone();
     newrect.x += this._movedX;
     var members = null;
-    while (true) {
-        if (this._movedX == 0){
+    if (!this._transparent){
+        while (true) {
+            if (this._movedX == 0){
+                break;
+            }
+            if(!Kien.LMBS_Core.moveThroughAlly && !(Kien.LMBS_Core.dashThroughAlly && this.isDashing())){
+                members = this.friendsUnit().members();
+                if (members.findIndex(function(obj) {
+                    return obj.isOpaque() && newrect.overlap(obj._battleRect);
+                }) != -1 ){
+                    this._movedX += this._movedX > 0 ? -1 : 1;
+                    newrect = this._battleRect.clone();
+                    newrect.x += this._movedX;
+                    continue;
+                }
+            }
+            if(!Kien.LMBS_Core.moveThroughEnemy && !(Kien.LMBS_Core.dashThroughEnemy && this.isDashing())){
+                members = this.opponentsUnit().members();
+                if (members.findIndex(function(obj) {
+                    return obj.isOpaque() && newrect.overlap(obj._battleRect);
+                }) != -1 ){
+                    this._movedX += this._movedX > 0 ? -1 : 1;
+                    newrect = this._battleRect.clone();
+                    newrect.x += this._movedX;
+                    continue;
+                }
+            }
             break;
         }
-        if(!Kien.LMBS_Core.moveThroughAlly && !(Kien.LMBS_Core.dashThroughAlly && this.isDashing())){
-            members = this.friendsUnit().members();
-            if (members.findIndex(function(obj) {
-                return obj.isOpaque() && newrect.overlap(obj._battleRect);
-            }) != -1 ){
-                this._movedX += this._movedX > 0 ? -1 : 1;
-                newrect = this._battleRect.clone();
-                newrect.x += this._movedX;
-                continue;
-            }
-        }
-        if(!Kien.LMBS_Core.moveThroughEnemy && !(Kien.LMBS_Core.dashThroughEnemy && this.isDashing())){
-            members = this.opponentsUnit().members();
-            if (members.findIndex(function(obj) {
-                return obj.isOpaque() && newrect.overlap(obj._battleRect);
-            }) != -1 ){
-                this._movedX += this._movedX > 0 ? -1 : 1;
-                newrect = this._battleRect.clone();
-                newrect.x += this._movedX;
-                continue;
-            }
-        }
-        break;
     }
-
 }
 
 Game_Battler.prototype.moveSpeed = function() {
@@ -410,7 +461,7 @@ Game_Battler.prototype.updateJump = function() {
 }
 
 Game_Battler.prototype.updateCollide = function() {
-    if (this.isForceWaiting()) {
+    if (this.isForceWaiting() || this._transparent) {
         return;
     }
     var newrect = this._battleRect;
@@ -506,7 +557,7 @@ Game_Battler.prototype.updateChainCount = function() {
 
 Kien.LMBS_Core.Game_Battlre_clearMotion = Game_Battler.prototype.clearMotion;
 Game_Battler.prototype.clearMotion = function() {
-	Kien.LMBS_Core.Game_Battlre_clearMotion.call(this);
+	Kien.LMBS_Core.Game_Battlre_clearMotion.apply(this, arguments);
 	this._pose = "Stand";
 };
 
@@ -518,21 +569,23 @@ Game_Battler.prototype.clearChainCount = function() {
 
 Kien.LMBS_Core.Game_Battler_onBattleEnd = Game_Battler.prototype.onBattleEnd;
 Game_Battler.prototype.onBattleEnd = function() {
-    Kien.LMBS_Core.Game_Battler_onBattleEnd.call(this);
+    Kien.LMBS_Core.Game_Battler_onBattleEnd.apply(this, arguments);
     this._battleRect = null;
     this._battleStart = false;
     this._forcePose = null;
     this.endMotion();
+    this.clearPopup();
     this.clearChainCount();
 };
 
 Kien.LMBS_Core.Game_Battler_onBattleStart = Game_Battler.prototype.onBattleStart;
 Game_Battler.prototype.onBattleStart = function() {
-    Kien.LMBS_Core.Game_Battler_onBattleStart.call(this);
+    Kien.LMBS_Core.Game_Battler_onBattleStart.apply(this, arguments);
     this._battleStart = true;
     this._forcePose = null;
     this.initBattlePosition();
     this.clearChainCount();
+    this.clearPopup();
 };
 
 Game_Battler.prototype.initBattlePosition = function() {
@@ -552,6 +605,7 @@ Game_Battler.prototype.endMotion = function() {
     this._motionFall = true;
     this._rotation = 0;
     this._hitStopLength = 15;
+    this._transparent = this._defaultTransparent;
     if (this._originalTarget !== undefined) {
         this._target = this._originalTarget;
         this._originalTarget = undefined;
@@ -726,7 +780,7 @@ Game_Battler.prototype.dealDamage = function(target) {
         if (this._actions[0].isDamage() || this._actions[0].isDrain()){
             target.knockback(this._damageInfo.knockback, dir, this._damageInfo.knocklength);
             target.onHitted(this);
-            this.onHit(target);
+            this.onHit(target, this._actions[0]);
         }
         BattleManager.refreshStatus();
         this._damageList.push(target);
@@ -742,17 +796,32 @@ Game_Battler.prototype.forceDamage = function(target) {
     if (this._actions[0].isDamage() || this._actions[0].isDrain()){
         target.knockback(this._damageInfo.knockback, dir, this._damageInfo.knocklength);
         target.onHitted(this);
-        this.onHit(target);
+        this.onHit(target, this._actions[0]);
     }
     BattleManager.refreshStatus();
 }
 
-Game_Battler.prototype.onHit = function(target) {
+Game_Battler.prototype.onHit = function(target, action) {
     if (target._hitCount > this._currentHitCount) {
         this._currentHitCount = target._hitCount;
     }
     if (target._chainCount > this._currentChainCount) {
         this._currentChainCount = target._chainCount;
+    }
+    var objs = this.traitObjects();
+    for (var i = 0; i < objs.length; i++) {
+        var obj = objs[i];
+        if (action.isDamage()) {
+            this.checkOnHitDamage(obj, target, action);
+        }
+    }
+}
+
+Game_Battler.prototype.checkOnHitDamage = function(obj, target, action) {
+    var val = Number.parseInt(obj.meta["OnHitDamage"]);
+    if (Number.isFinite(val)) {
+        this._actions[0].executeHpDamage(target, val);
+        target.startDamagePopup();
     }
 }
 
@@ -770,11 +839,15 @@ Game_Battler.prototype.getWeaponName = function() {
     return this._weaponName;
 }
 
-Game_Battler.prototype.getEvaluateObjects = function() {
-    var obj = {};
+Game_Battler.prototype.getEvaluateObjects = function(src) {
+    var obj = src || {};
     obj.v = $gameVariables._data;
     obj.a = this;
     obj.b = this._target;
     obj.sv = this._skillMotionDescriptor ? this._skillMotionDescriptor._skillVariables : {};
     return obj;
+}
+
+Game_Battler.prototype.getRelativeX = function(dx) {
+    return this._facing ? dx : -dx;
 }

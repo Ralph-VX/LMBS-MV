@@ -12,11 +12,13 @@ Spriteset_BattleLMBS.prototype.constructor = Spriteset_BattleLMBS;
 
 Spriteset_BattleLMBS.prototype.initialize = function() {
     Spriteset_Base.prototype.initialize.call(this);
+    this._battlebackLocated = false;
 };
 
 Spriteset_BattleLMBS.prototype.createLowerLayer = function() {
     Spriteset_Base.prototype.createLowerLayer.call(this);
     this.createBackground();
+    this.createBattleField();
     this.createBattleback();
     this.createBattlerSprite();
 }
@@ -81,6 +83,7 @@ Spriteset_BattleLMBS.prototype.findSprite = function(battler){
 Spriteset_BattleLMBS.prototype.update = function() {
     Spriteset_Base.prototype.update.call(this);
     this.updateTargetArrow();
+    this.updateBattleback();
 }
 
 Spriteset_BattleLMBS.prototype.updateTargetArrow = function() {
@@ -127,13 +130,53 @@ Spriteset_BattleLMBS.prototype.updateBackground = function() {
 
 }
 
+Spriteset_BattleLMBS.prototype.createBattleField = function() {
+    var width = Kien.LMBS_Core.battleWidth;
+    var height = Graphics.boxHeight * Kien.LMBS_Core.maxCameraZoom;
+    var x = 0;
+    var y = Kien.LMBS_Core.battleY - Kien.LMBS_Core.battleFieldY;
+    this._battleField = new Sprite();
+    this._battleField.x = x;
+    this._battleField.y = y;
+    this._battleField.basex = x;
+    this._battleField.basey = y;
+    this._baseSprite.addChild(this._battleField);
+};
+
 Spriteset_BattleLMBS.prototype.createBattleback = function() {
+    var margin = 32;
+    var x = 0
+    var y = 0;
+    var width = Kien.LMBS_Core.battleWidth;
+    var height = this._battleField.height;
     this._back1Sprite = new Sprite();
     this._back2Sprite = new Sprite();
     this._back1Sprite.bitmap = this.battleback1Bitmap();
     this._back2Sprite.bitmap = this.battleback2Bitmap();
-    this._baseSprite.addChild(this._back1Sprite);
-    this._baseSprite.addChild(this._back2Sprite);
+    this._back1Sprite.move(x, y, width, height);
+    this._back2Sprite.move(x, y, width, height);
+    this._battleField.addChild(this._back1Sprite);
+    this._battleField.addChild(this._back2Sprite);
+};
+
+Spriteset_BattleLMBS.prototype.updateBattleback = function() {
+    //this._battleField.x = this._battleField.basex - this.x;
+    //this._battleField.y = this._battleField.basey - this.y;
+    if (!this._battlebackLocated) {
+        this.locateBattleback();
+        this._battlebackLocated = true;
+    }
+};
+
+Spriteset_BattleLMBS.prototype.locateBattleback = function() {
+    var width = this._battleField.width;
+    var height = this._battleField.height;
+    var sprite1 = this._back1Sprite;
+    var sprite2 = this._back2Sprite;
+    // sprite1.origin.x = sprite1.x + (sprite1.bitmap.width - width) / 2;
+    // sprite2.origin.x = sprite1.y + (sprite2.bitmap.width - width) / 2;
+    //sprite1.origin.y = sprite1.x + sprite1.bitmap.height - height;
+    //sprite2.origin.y = sprite1.y + sprite2.bitmap.height - height;
 };
 
 Spriteset_BattleLMBS.prototype.battleback1Bitmap = function() {

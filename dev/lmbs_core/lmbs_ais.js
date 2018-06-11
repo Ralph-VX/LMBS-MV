@@ -80,17 +80,22 @@ Game_LMBSAiMoveTo.prototype.setFinish = function() {
 
 Game_LMBSAiMoveTo.prototype.setup = function(obj) {
     Game_LMBSAiBase.prototype.setup.apply(this,arguments);
+    this._lastX = this._battler._battleX;
     this._target = obj.target;
-
+    this._isDash = obj.dash || false;
 }
 
 Game_LMBSAiMoveTo.prototype.update = function() {
     Game_LMBSAiBase.prototype.update.call(this);
+    // if (this._lastX == this._battler._battleX) {
+    //     this._finish = true;
+    //     return;
+    // }
     if (!!this._target && !!this._battler && !this._finish){
         var tx = this._target._battleX;
         var dir = tx > this._battler._battleX ? 1 : -1;
         var dx = tx - this._battler._battleX;
-        this._battler._dash = true;
+        this._battler._dash = this._isDash;
         if (dx == 0) {
             this._finish = true;
             this._battler._dash = false;
@@ -301,7 +306,7 @@ Game_LMBSAiActorPhysicalAction.prototype.update = function() {
     Game_LMBSAiBase.prototype.update.call(this);
     switch (this._phase) {
         case 0:
-            this._battler.pushAi(Game_LMBSAiAttackMove,{'dist': this._distance,'target': this._battler._target});
+            this._battler.pushAi(Game_LMBSAiAttackMove,{'dist': this._distance,'target': this._battler._target, "dash" : true});
             this._phase = 1;
             break;
         case 1:
@@ -351,7 +356,9 @@ Game_LMBSAiActorMagicAction.prototype.update = function() {
     switch (this._phase){
         case 0:// Back to initial position, and use the skill
             var tx = $gameParty.battlerPosition(this._battler);
-            this._battler.pushAi(Game_LMBSAiMoveTo, {'target': {'_battleX':tx}});
+            if (this._battler._battleX > tx) {
+                this._battler.pushAi(Game_LMBSAiMoveTo, {'target': {'_battleX':tx}, 'dash' : true});
+            }
             this._phase = 1;
             return;
         case 1: 
@@ -540,11 +547,14 @@ Game_LMBSAiForceAction.prototype.update = function() {
             this._battler._aiData.readySkill = this._item;
             this._battler._aiData.readySkillIsItem = DataManager.isItem(this._item);
             if (this._battler._aiData.readySkillIsItem) {
+                this._battler.pushAiWaitIdle();
                 this._battler.pushAi(Game_LMBSAiCertainAction);
             } else if (this._item.hitType == Game_Action.HITTYPE_PHYSICAL){
                 var dist = Kien.LMBS_Core.getSkillRange(this._battler._aiData.readySkill);
+                this._battler.pushAiWaitIdle();
                 this._battler.pushAi(Game_LMBSAiActorPhysicalAction,{'dist': dist});
             } else if (this._item.hitType == Game_Action.HITTYPE_MAGICAL) {
+                this._battler.pushAiWaitIdle();
                 this._battler.pushAi(Game_LMBSAiActorMagicAction);
             } else {
                 this._battler.startAiIdle(true);
@@ -557,6 +567,55 @@ Game_LMBSAiForceAction.prototype.update = function() {
             this._battler._target = this._oldTarget;
             this._phase = 2;
             break;
+    }
+}
+
+//-----------------------------------------------------------------------------
+// Game_LMBSEnemyAttackMove
+//
+// Ai Action to move and detect enemy in range.
+
+function Game_LMBSEnemyAttackMove() {
+    this.initialize.apply(this,arguments);
+}
+
+Game_LMBSEnemyAttackMove.prototype = Object.create(Game_LMBSAiMoveTo.prototype);
+Game_LMBSEnemyAttackMove.prototype.constructor = Game_LMBSEnemyAttackMove;
+
+Game_LMBSEnemyAttackMove.prototype.initialize = function() {
+    Game_LMBSAiMoveTo.prototype.initialize.apply(this,arguments);
+}
+
+Game_LMBSEnemyAttackMove.prototype.setup = function(obj) {
+    Game_LMBSAiMoveTo.prototype.setup.apply(this,arguments);
+    this._distance = obj.dist;
+    this._count = 0;
+    this._maxCount = 90 + Math.randomInt(30);
+}
+
+Game_LMBSEnemyAttackMove.prototype.update = function() {
+    if (!!this._target && !!this._battler && !this._finish) {
+        var dist = this._distance;
+        var newRect = this._battler._battleRect.clone();
+        if (!this._battler._facing){
+            newRect.x -= dist;
+        } else {
+            newRect.x += newRect.width
+        }
+        newRect.width = dist;
+        this._battler._debugRects.push(newRect);
+        if (this._battler.opponentsUnit().members().findIndex(function(enemy){
+            return enemy._battleRect.overlap(newRect);
+        }) != -1){
+            this._battler.useSkill(this._battler._aiData.readySkill.id);
+            this._finish = true;
+            return;
+        }
+        this._count++;
+    }
+    Game_LMBSAiMoveTo.prototype.update.apply(this);
+    if (!this._finish && this._count > this._maxCount) {
+        this._finish = true;
     }
 }
 
@@ -594,7 +653,7 @@ Game_LMBSAiEnemyPhysicalAction.prototype.update = function() {
     Game_LMBSAiBase.prototype.update.call(this);
     switch (this._phase) {
         case 0:
-            this._battler.pushAi(Game_LMBSAiAttackMove,{'dist': this._distance,'target': this._battler._target});
+            this._battler.pushAi(Game_LMBSEnemyAttackMove,{'dist': this._distance,'target': this._battler._target, "dash" : false});
             this._phase = 1;
             break;
         case 1:
@@ -683,6 +742,33 @@ Game_LMBSAiEnemyBase.prototype.isFinish = function() {
     return false;
 }
 
+Game_LMBSAiEnemyBase.prototype.isFrontBattler = function() {
+    var members = this._battler.friendsUnit().members();
+    for (var i = 0; i < members.length; i++) {
+        if (members[i] != this._battler) {
+            if (members[i].isAlive() && this._battler._battleX > members[i]._battleX) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+Game_LMBSAiEnemyBase.prototype.haveAllyInBetween = function() {
+    if (this._battler._target == null) {
+        return false;
+    }
+    var members = this._battler.friendsUnit().members();
+    for (var i = 0; i < members.length; i++) {
+        if (members[i] != this._battler) {
+            if (members[i].isAlive() && Kien.LMBS_Core.inBetween(this._battler._battleX, this._battler._target._battleX, members[i]._battleX)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 Game_LMBSAiEnemyBase.prototype.update = function() {
     var actionList = this._battler.availableActions();
     if (actionList.length > 0 && this._battler._target !== null) {
@@ -696,11 +782,16 @@ Game_LMBSAiEnemyBase.prototype.update = function() {
                 this._battler.chooseTarget();
                 this._battler.pushAi(Game_LMBSAiEnemyMagicalAction);
             } else if (skill.hitType == Game_Action.HITTYPE_PHYSICAL) {
-                this._battler._aiData.actionType = 'attack';
-                var dist = Kien.LMBS_Core.getSkillRange(skill);
-                this._battler._aiData.readySkill = skill;
                 this._battler.chooseTarget();
-                this._battler.pushAi(Game_LMBSAiEnemyPhysicalAction,{'dist': dist });
+                if (!this.haveAllyInBetween()) {
+                    this._battler._aiData.actionType = 'attack';
+                    var dist = Kien.LMBS_Core.getSkillRange(skill);
+                    this._battler._aiData.readySkill = skill;
+                    this._battler.chooseTarget();
+                    this._battler.pushAi(Game_LMBSAiEnemyPhysicalAction,{'dist': dist });
+                } else {
+                    this._battler.startAiIdle();
+                }
             } else {
                 this._battler._aiData.actionType = 'certain';
                 this._battler._aiData.readySkill = skill;

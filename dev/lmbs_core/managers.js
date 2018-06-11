@@ -35,7 +35,7 @@ SceneManager.isNextScene = function(sceneClass) {
     if (sceneClass === Scene_Battle) {
         return Kien.LMBS_Core.SceneManager_isNextScene.call(this, Scene_BattleLMBS) || Kien.LMBS_Core.SceneManager_isNextScene.call(this, sceneClass);
     };
-    return Kien.LMBS_Core.SceneManager_isNextScene.call(this, sceneClass);
+    return Kien.LMBS_Core.SceneManager_isNextScene.apply(this, arguments);
 };
 
 //-----------------------------------------------------------------------------
@@ -70,6 +70,30 @@ BattleManager.processDefeat = function() {
         AudioManager.stopBgm();
     }
     this.endBattle(2);
+};
+
+BattleManager.processEscape = function() {
+    $gameParty.performEscape();
+    SoundManager.playEscape();
+    this.processAbort();
+};
+
+BattleManager.checkBattleEnd = function() {
+    if (this._phase) {
+        if (this.checkAbort()) {
+            return true;
+        } else if (this._escaped) {
+            this.processEscape();
+            return true;
+        } else if ($gameParty.isAllDead()) {
+            this.processDefeat();
+            return true;
+        } else if ($gameTroop.isAllDead()) {
+            this.processVictory();
+            return true;
+        }
+    }
+    return false;
 };
 
 BattleManager.hasObstacle = function(subject, object){
@@ -116,6 +140,16 @@ BattleManager.previousTarget = function(originalTarget) {
             return originalTarget;
         }
     }
+}
+
+BattleManager.makeEscapeRatio = function() {
+    this._escapeRatio = Math.max(Math.min(1.0 * $gameParty.agility() / $gameTroop.agility(), 3.0), 0.1);
+    this._escapeCount = 0;
+    this._escaping = false;
+};
+
+BattleManager.escapeRate = function() {
+    return this._escapeCount / 120;
 }
 
 BattleManager.nextTarget = function(originalTarget) {

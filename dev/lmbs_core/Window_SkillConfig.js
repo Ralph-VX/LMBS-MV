@@ -5,7 +5,7 @@
 
 Kien.LMBS_Core.Window_SkillType_makeCommandList = Window_SkillType.prototype.makeCommandList;
 Window_SkillType.prototype.makeCommandList = function() {
-    Kien.LMBS_Core.Window_SkillType_makeCommandList.call(this);
+    Kien.LMBS_Core.Window_SkillType_makeCommandList.apply(this, arguments);
     if (this._actor && !$gameParty.inBattle()){
         this.addCommand(Kien.LMBS_Core.skillTypeName, 'config', true);
     }

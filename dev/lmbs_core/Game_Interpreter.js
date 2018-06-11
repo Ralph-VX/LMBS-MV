@@ -8,7 +8,7 @@ Kien.LMBS_Core.Game_Interpreter_command301 = Game_Interpreter.prototype.command3
 Game_Interpreter.prototype.command301 = function() {
     if (!$gameParty.inBattle()) {
         if (!$gameSystem._LMBSEnabled) {
-            return Kien.LMBS_Core.Game_Interpreter_command301.call(this);
+            return Kien.LMBS_Core.Game_Interpreter_command301.apply(this, arguments);
         }
         var troopId;
         if (this._params[0] === 0) {  // Direct designation
@@ -31,9 +31,9 @@ Game_Interpreter.prototype.command301 = function() {
 }
 
 Game_Interpreter.prototype.setEventPause = function(args) {
-    if (args[0] == "true") {
+    if (args == "true") {
         $gameSystem._LMBSBattleEventPauseGame = true;
-    } else if (args[0] == "false") {
+    } else if (args == "false") {
         $gameSystem._LMBSBattleEventPauseGame = false;
     }
 }

@@ -20,9 +20,22 @@ Sprite_EnemyLMBS.prototype.initMembers = function(battler) {
     this._collapsed = false;
 }
 
+Sprite_EnemyLMBS.prototype.onStart = function() {
+    Sprite_BattlerLMBS.prototype.onStart.apply(this, arguments);
+    this.createHpGauge();
+}
+
+Sprite_EnemyLMBS.prototype.createHpGauge = function() {
+    this._hpGaugeSprite = new Sprite_GaugeLMBS(this._battler, this._cachedBitmaps["Stand"].boxwidth, 12, ["hp"], ['mhp'], ['hpIgnoreAmount']);
+    this._hpGaugeSprite.anchor.x = 0.5;
+    this._hpGaugeSprite.refresh();
+    this.parent.addChild(this._hpGaugeSprite);
+}
+
 Sprite_EnemyLMBS.prototype.update = function() {
     Sprite_BattlerLMBS.prototype.update.call(this);
     this.updateCollapseEffect();
+    this.updateHpSprite();
 }
 
 Sprite_EnemyLMBS.prototype.updateCollapseEffect = function() {
@@ -44,3 +57,11 @@ Sprite_EnemyLMBS.prototype.updateCollapse = function() {
     this.setBlendColor([255, 128, 128, 128]);
     this.opacity *= this._effectDuration / (this._effectDuration + 1);
 };
+
+Sprite_EnemyLMBS.prototype.updateHpSprite = function() {
+    if (this._hpGaugeSprite) {
+        this._hpGaugeSprite.y = this._battler.screenY();
+        this._hpGaugeSprite.x = this._battler.screenX();
+        this._hpGaugeSprite.visible = !this._battler.isDead();
+    }
+}

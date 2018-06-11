@@ -35,11 +35,6 @@ AbstractMotionDescriptor.prototype.release = function() {
 }
 
 //-----------------------------------------------------------------------------
-// BasicMotionDescriptor
-//
-// Motion descriptor contains only basic movements.
-
-//-----------------------------------------------------------------------------
 // DefaultMotionDescriptor
 //
 // Motion descriptor for default skill motions.
@@ -217,7 +212,9 @@ DefaultMotionDescriptor.prototype.processMotionCommandwaitfall = function(obj) {
 DefaultMotionDescriptor.prototype.processMotionCommandwaitcast = function(obj) {
     this._battler._pose = "Cast";
     this._battler._patternIndex  = -1;
-    this._processingMotionList.push(Object.create(obj));
+    var obj2 = Object.create(obj);
+    obj2.dur = Math.floor(obj.dur * this._battler.castTimeRate());
+    this._processingMotionList.push(Object.create(obj2));
     return true;
 }
 
@@ -333,14 +330,30 @@ DefaultMotionDescriptor.prototype.processMotionCommandshowmessage = function(obj
 }
 
 DefaultMotionDescriptor.prototype.processMotionCommandhidemessage = function(obj) {
-            if ($gameTemp.getBattleMessage(obj.channel) == this._showingMessage[obj.channel]) {
-                $gameTemp.removeBattleMessage(obj.channel);
-            }
-            delete this._showingMessage[obj.channel];
+    if ($gameTemp.getBattleMessage(obj.channel) == this._showingMessage[obj.channel]) {
+        $gameTemp.removeBattleMessage(obj.channel);
+    }
+    delete this._showingMessage[obj.channel];
 }
 
 DefaultMotionDescriptor.prototype.processMotionCommandevaluate = function(obj) {
-    Kien.LMBS_Core.executeWithEnvironment(obj.expression, this._Battler.getEvaluateObjects());
+    Kien.LMBS_Core.executeWithEnvironment(obj.expression, this._battler.getEvaluateObjects());
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandplayse = function(obj) {
+    AudioManager.playSe(obj);
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandsetdirection = function(obj) {
+    this._battler._facing = obj.dir == 6 ? true : false;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandinvertdirection = function(obj) {
+    this._battler._facing = !this._battler._facing;
+}
+
+DefaultMotionDescriptor.prototype.processMotionCommandsettransparent = function(obj) {
+    this._battler._transparent = obj.value;
 }
 
 // Process motion executing in list
@@ -467,15 +480,15 @@ DefaultMotionDescriptor.prototype.canUse = function(battler, obj) {
         bool = battler.meetsItemConditions(obj);
     }
     if(!bool){
-        return bool;
+        return false;
     }
     bool = (!battler.isMotion() || battler._waitInput);
     if(!bool){
-        return bool;
+        return false;
     }
     bool = !battler.isKnockback() && !battler.isGuard();
     if (!bool) {
-        return bool;
+        return false;
     }
     if(battler._actions[0] && battler.isMotion()){
         var now = battler._actions[0].item();
@@ -484,7 +497,7 @@ DefaultMotionDescriptor.prototype.canUse = function(battler, obj) {
         bool = (pri1 != -1 ) && ((pri1 == 0 && pri2 == 0) || (pri2 > pri1) || (pri2 < 0));
     }
     if (!bool){
-        return bool;
+        return false;
     }
     if (!battler.isGround()) {
         bool = obj.meta["Aerial Cast"] ? true : false ;

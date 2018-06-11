@@ -5,7 +5,7 @@
 
 //Kien.LMBS_Core.Game_Enemy_initMembers = Game_Enemy.prototype.initMembers;
 //Game_Enemy.prototype.initMembers = function() {
-//   Kien.LMBS_Core.Game_Enemy_initMembers.call(this);
+//   Kien.LMBS_Core.Game_Enemy_initMembers.apply(this, arguments);
 //}
 
 Game_Enemy.prototype.clearAiData = function() {
@@ -83,6 +83,7 @@ Game_Enemy.prototype.loadTargetType = function(string) {
 Game_Enemy.prototype.chooseTarget = function() {
     this.chooseEnemyTarget();
 }
+
 Game_Enemy.prototype.chooseEnemyTarget = function() {
     this._target = null;
     switch (this._aiData.targetType){
@@ -195,7 +196,7 @@ Game_Enemy.prototype.actionsToSkills = function(actionList) {
 Kien.LMBS_Core.Game_Enemy_battlerName = Game_Enemy.prototype.battlerName;
 Game_Enemy.prototype.battlerName = function() {
     if (!$gameSystem._LMBSEnabled) {
-        return Kien.LMBS_Core.Game_Enemy_battlerName.call(this);
+        return Kien.LMBS_Core.Game_Enemy_battlerName.apply(this, arguments);
     }
     if(typeof this._battlerName == "undefined"){
     	if(this.enemy().meta["Battler Name"]){
@@ -204,11 +205,16 @@ Game_Enemy.prototype.battlerName = function() {
     		this._battlerName = null;
     	}
     }
-    return this._battlerName || Kien.LMBS_Core.Game_Enemy_battlerName.call(this);
+    return this._battlerName || Kien.LMBS_Core.Game_Enemy_battlerName.apply(this, arguments);
 }
 
 Game_Enemy.prototype.initBattlePosition = function(){
-    this._battleX = Kien.LMBS_Core.enemyXStart + this._screenX;
+    this._battleX = Kien.LMBS_Core.enemyXStart;
+    if (this.index() >= 1) {
+        var index = this.index();
+        this._battleX = $gameTroop.members()[index-1]._battleX + $gameTroop.members()[index-1]._battleRect.width/2;
+        this._battleX += this._battleRect.width/2;
+    }
     this._moveTarget = this._battleX;
     this._target = $gameParty.members()[0];
     this._battleY = 0;
@@ -245,7 +251,7 @@ Game_Enemy.prototype.updateAiAction = function() {
 }
 
 Game_Enemy.prototype.startAiIdle = function(canMove) {
-    var obj = {'duration' :Math.randomInt(15) + 10};
+    var obj = {'duration' :Math.randomInt(30) + 60};
     if(canMove){
         obj.moveDur = Math.randomInt(15) + 15;
         obj.dir = Math.randomInt(2) == 0 ? -1 : 1;

@@ -12,14 +12,14 @@ Sprite_GravityProjectileLMBS.prototype.constructor = Sprite_GravityProjectileLMB
 
 Sprite_GravityProjectileLMBS.prototype.onJSONloaded = function(param) {
     Sprite_ProjectileLMBS.prototype.onJSONloaded.call(this, param);
-    this._gravity = Kien.LMBS_Core.loadJSONEvaluableValue(param.gravity,this) || 0.2;
+    this._gravity = this.evaluateJSONString(param.gravity,this) || 0.2;
 }
 
 Sprite_GravityProjectileLMBS.prototype.updatePosition = function() {
     Sprite_ProjectileLMBS.prototype.updatePosition.call(this);
     this._yspeed -= this._gravity;
     if (this._dangle) {
-        this.rotation = (new Kien.Vector2D(this._xspeed,-this._yspeed)).angleWithHorizon();
+        this.rotation = (new Kien.Vector2D(this._xspeed * this._direction,-this._yspeed)).angleWithHorizon();
     }
 }
 

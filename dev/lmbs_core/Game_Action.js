@@ -5,13 +5,13 @@
 
 Kien.LMBS_Core.Game_Action_clear = Game_Action.prototype.clear;
 Game_Action.prototype.clear = function() {
-    Kien.LMBS_Core.Game_Action_clear.call(this);
+    Kien.LMBS_Core.Game_Action_clear.apply(this, arguments);
     this._damagePercentage = 1;
 };
 
 Kien.LMBS_Core.Game_Action_makeDamageValue = Game_Action.prototype.makeDamageValue;
 Game_Action.prototype.makeDamageValue = function(target, critical) {
-    var value = Kien.LMBS_Core.Game_Action_makeDamageValue.call(this,target,critical);
+    var value = Kien.LMBS_Core.Game_Action_makeDamageValue.apply(this, arguments);
     value = Math.round(value * this._damagePercentage);
     return value
 };
@@ -95,3 +95,20 @@ Game_Action.prototype.isTargetAvailable = function(target) {
     }
     return true;
 }
+
+//-----------------------------------------------------------------------------
+// Game_ActionResult
+//
+// The game object class for a result of a battle action. For convinience, all
+// member variables in this class are public.
+
+Game_ActionResult.prototype.copy = function() {
+    var obj = new Game_ActionResult();
+    obj.evaded = this.evaded;
+    obj.missed = this.missed;
+    obj.hpDamage = this.hpDamage;
+    obj.hpAffected = this.hpAffected;
+    obj.critical = this.critical;
+    obj.mpDamage = this.mpDamage;
+    return obj;
+};
